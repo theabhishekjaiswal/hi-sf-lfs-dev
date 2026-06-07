@@ -14,29 +14,51 @@
   // ─── Salesforce URL helpers ───────────────────────────────────────────────
 
   /**
-   * Detect Salesforce base URL (org domain).
-   * Handles both classic (.salesforce.com) and lightning (.lightning.force.com).
+   * Return the base URL suitable for Classic navigation.
+   * On Lightning (*.lightning.force.com) rewrite to *.my.salesforce.com so
+   * Classic links work correctly in both production and sandbox orgs.
+   *
+   * Examples:
+   *   myorg.lightning.force.com        → myorg.my.salesforce.com
+   *   myorg--uat.sandbox.my.salesforce.com  → unchanged (already classic-compatible)
+   *   myorg.my.salesforce.com          → unchanged
+   *   cs123.salesforce.com             → unchanged
    */
-  function getBaseUrl() {
+  function getClassicBaseUrl() {
     const { protocol, hostname } = window.location;
-    // Normalise to the core salesforce.com domain
-    const coreDomain = hostname
-      .replace('.lightning.force.com', '.salesforce.com')
-      .replace('.my.salesforce.com', '.salesforce.com');
-    // Keep as-is if already .salesforce.com, otherwise use hostname
-    return `${protocol}//${hostname}`;
+    // Rewrite Lightning domain → My Domain (works for prod & sandbox)
+    const classicHost = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
+    return `${protocol}//${classicHost}`;
+  }
+
+  /** Return the base URL as-is (used for API calls – must stay on current host). */
+  function getBaseUrl() {
+    return `${window.location.protocol}//${window.location.hostname}`;
   }
 
   /**
+   * Known Visualforce page names that correspond to a specific SObject.
+   * Key = page name (case-insensitive), value = SObject API name.
+   */
+  const VF_PAGE_OBJECT_MAP = {
+    'applicationdetails':  'genesis__Applications__c',
+    'application_details': 'genesis__Applications__c',
+    'applicationdetail':   'genesis__Applications__c',
+  };
+
+  /**
    * Parse the current page URL and return record info or null.
-   * Supports Lightning (/lightning/r/<Object>/<Id>/view) and
-   * Classic (/<Id> or ?id=<Id>).
+   *
+   * Supported patterns:
+   *  1. Lightning  /lightning/r/ObjectApiName/RecordId/view
+   *  2. Classic    /RecordId   (15 or 18 char ID in path)
+   *  3. VF / Apex  /apex/PageName?id=RecordId   ← NEW
+   *  4. Classic    ?id=RecordId  (generic query-param fallback)
    */
   function parseCurrentRecord() {
-    const url = window.location.href;
-    const { pathname, searchParams } = new URL(url);
+    const { pathname, searchParams } = new URL(window.location.href);
 
-    // Lightning URL: /lightning/r/ObjectApiName/RecordId/view
+    // 1. Lightning URL: /lightning/r/ObjectApiName/RecordId/view
     const lightningMatch = pathname.match(
       /\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})\//
     );
@@ -44,14 +66,22 @@
       return { objectType: lightningMatch[1], recordId: lightningMatch[2], isLightning: true };
     }
 
-    // Classic URL: /RecordId (15 or 18 char Salesforce ID)
+    // 2. Classic path: /RecordId
     const classicPathMatch = pathname.match(/^\/([a-zA-Z0-9]{15,18})(?:\/|$)/);
     if (classicPathMatch) {
       return { objectType: null, recordId: classicPathMatch[1], isLightning: false };
     }
 
-    // Classic query param: ?id=RecordId
+    // 3. Apex / Visualforce page: /apex/PageName?id=RecordId
+    const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
     const idParam = searchParams.get('id');
+    if (apexMatch && idParam && /^[a-zA-Z0-9]{15,18}$/.test(idParam)) {
+      const pageName = apexMatch[1].toLowerCase();
+      const objectType = VF_PAGE_OBJECT_MAP[pageName] || null;
+      return { objectType, recordId: idParam, isLightning: false };
+    }
+
+    // 4. Generic query-param fallback: ?id=RecordId
     if (idParam && /^[a-zA-Z0-9]{15,18}$/.test(idParam)) {
       return { objectType: null, recordId: idParam, isLightning: false };
     }
@@ -91,7 +121,8 @@
   // ─── URL builders ─────────────────────────────────────────────────────────
 
   function classicUrl(id) {
-    return `${getBaseUrl()}/${id}?nooverride=1`;
+    // Always use the Classic-compatible base URL (handles sandbox rewrites)
+    return `${getClassicBaseUrl()}/${id}?nooverride=1`;
   }
 
   function lightningUrl(objectType, id) {
@@ -169,7 +200,7 @@
       tooltip: 'Open in Salesforce Classic',
       variant: 'classic',
       onClick: () => {
-        window.open(`${baseUrl}/${record.recordId}?nooverride=1`, '_blank');
+        window.open(classicUrl(record.recordId), '_blank');
       },
     });
     toolbar.appendChild(classicBtn);
