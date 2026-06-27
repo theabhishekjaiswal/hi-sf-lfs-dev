@@ -1,49 +1,13 @@
 /**
- * SF Navigator — Background Service Worker (v2)
+ * SF Navigator — Background Service Worker (minimal stub)
  *
- * Acts as a privileged API proxy for the content script.
- * Content scripts cannot reliably send authenticated fetch() calls to Salesforce
- * (CSP + SameSite cookie restrictions). The background worker has broader
- * network access and correctly forwards browser session cookies.
+ * API calls are made directly from the content script (same-origin fetch
+ * with credentials:include) — this is more reliable than a service worker
+ * which doesn't inherit the tab's session cookies.
+ *
+ * This file is kept for potential future use (e.g., badge updates, context menus).
  */
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'sfQuery') {
-    handleQuery(message.baseUrl, message.query)
-      .then((data) => sendResponse({ ok: true, data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    // Return true to keep the message channel open for the async response
-    return true;
-  }
-
-  if (message.type === 'sfFetch') {
-    handleFetch(message.url)
-      .then((data) => sendResponse({ ok: true, data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
-});
-
-async function handleQuery(baseUrl, query) {
-  const url = `${baseUrl}/services/data/v59.0/query?q=${encodeURIComponent(query)}`;
-  const resp = await fetch(url, {
-    credentials: 'include',
-    headers: { Accept: 'application/json' },
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`HTTP ${resp.status}: ${body.slice(0, 200)}`);
-  }
-  return resp.json();
-}
-
-async function handleFetch(url) {
-  const resp = await fetch(url, {
-    credentials: 'include',
-    headers: { Accept: 'application/json' },
-  });
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status}`);
-  }
-  return resp.json();
-}
+// Keep the service worker alive (no-op install handler)
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', () => {});
