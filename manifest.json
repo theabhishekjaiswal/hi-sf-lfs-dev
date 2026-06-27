@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "SF Navigator",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "Premium Salesforce navigation toolbar — switch views, open related records instantly.",
-  "permissions": ["scripting"],
+  "permissions": ["scripting", "cookies"],
   "host_permissions": [
     "https://*.salesforce.com/*",
     "https://*.force.com/*",

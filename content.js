@@ -1,33 +1,32 @@
 /**
- * SF Navigator v2.1 — Content Script
+ * SF Navigator v2.2 — Content Script
  *
- * Premium Salesforce navigation toolbar.
- * Works on ANY Salesforce page — record pages, list views, home, setup, etc.
+ * Works on ANY Salesforce page — records, list views, home, setup, etc.
  *
- * KEY ARCHITECTURE NOTE:
- *   All Salesforce REST API calls are made directly from the content script
- *   using fetch() with credentials:'include'. Content scripts run in the
- *   page's security context, so same-origin requests automatically include
- *   the browser's session cookies. Background service workers do NOT inherit
- *   tab session cookies — that's why the previous approach caused 401 errors.
+ * API CALLS: Routed through background.js which:
+ *   - Reads the `sid` session cookie via chrome.cookies API
+ *   - Makes requests with Authorization: Bearer {sid}
+ *   - Background host_permissions bypass CORS (no INVALID_SESSION_ID)
+ *
+ * NAVIGATION: Uses Salesforce's /ltng/switcher endpoint which properly
+ *   changes the user's interface mode (not just the URL), so switching
+ *   works even when the org defaults to Lightning-only.
  */
 
 (function () {
   'use strict';
 
-  // ─── Guard: skip login / OAuth / API-only paths ───────────────────────────
+  // ─── Guard: skip auth / API-only paths ───────────────────────────────────
 
-  const EXCLUDED_PATH_RE = /^\/(secur\/|login|services\/|oauth2\/|setup\/secur)/i;
-  if (EXCLUDED_PATH_RE.test(window.location.pathname)) return;
+  if (/^\/(secur\/|login|services\/|oauth2\/|setup\/secur)/i.test(window.location.pathname)) return;
 
-  // ─── Constants ───────────────────────────────────────────────────────────
+  // ─── Constants ────────────────────────────────────────────────────────────
 
-  const APP_OBJECT  = 'genesis__Applications__c';
-  const TOOLBAR_ID  = 'sf-navigator-root';
-  const SF_ID_RE    = /^[a-zA-Z0-9]{15,18}$/;
+  const APP_OBJECT = 'genesis__Applications__c';
+  const TOOLBAR_ID = 'sf-navigator-root';
+  const SF_ID_RE   = /^[a-zA-Z0-9]{15,18}$/;
 
-  // ─── Salesforce record-ID key-prefix → object type ───────────────────────
-  // Used to identify object type for Classic URLs where it's not in the path.
+  // ─── Key prefix → object type (Classic record ID detection) ──────────────
 
   const KEY_PREFIX = {
     '001': 'Account',
@@ -39,10 +38,9 @@
     '00U': 'Event',
     '01Z': 'Report',
     '00D': 'Organization',
-    '01I': 'PermissionSet',
   };
 
-  // ─── Visualforce page name → SObject type ────────────────────────────────
+  // ─── VF page name → SObject type ─────────────────────────────────────────
 
   const VF_PAGE_MAP = {
     'applicationdetails':  APP_OBJECT,
@@ -52,68 +50,26 @@
     'applicationform':     APP_OBJECT,
   };
 
-  // ─── Cached API version ───────────────────────────────────────────────────
-
-  let _apiVer = null;
-
-  /**
-   * Discover the highest available Salesforce REST API version.
-   * Result is cached after the first call.
-   * Falls back to v59.0 if discovery fails.
-   */
-  async function getApiVersion() {
-    if (_apiVer) return _apiVer;
-    try {
-      const resp = await fetch(`${getApiBaseUrl()}/services/data/`, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      });
-      if (resp.ok) {
-        const list = await resp.json();
-        if (Array.isArray(list) && list.length > 0) {
-          const raw = list[list.length - 1].version; // e.g. "59.0"
-          _apiVer = raw.startsWith('v') ? raw : 'v' + raw;
-          return _apiVer;
-        }
-      }
-    } catch {}
-    _apiVer = 'v59.0';
-    return _apiVer;
-  }
-
   // ─── Domain helpers ───────────────────────────────────────────────────────
 
-  /**
-   * Base URL for API calls — always the current page's origin.
-   * Content scripts make same-origin requests so cookies are sent correctly.
-   */
   function getApiBaseUrl() {
     return `${window.location.protocol}//${window.location.hostname}`;
   }
 
   /**
    * Classic-compatible base URL.
-   * Rewrites lightning.force.com → my.salesforce.com so Classic links work in
-   * both production and sandbox (my-domain) orgs.
-   *
-   *   myorg.lightning.force.com           → myorg.my.salesforce.com
-   *   myorg--uat.sandbox.lightning.force.com → myorg--uat.sandbox.my.salesforce.com  (N/A usually)
-   *   myorg.my.salesforce.com             → unchanged
-   *   cs123.salesforce.com                → unchanged
+   * lightning.force.com  →  my.salesforce.com
+   * Handles production and sandbox (my-domain) orgs.
    */
   function getClassicBase() {
     const { protocol, hostname } = window.location;
-    const h = hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com');
-    return `${protocol}//${h}`;
+    return `${protocol}//${hostname.replace(/\.lightning\.force\.com$/, '.my.salesforce.com')}`;
   }
 
   /**
    * Lightning Experience base URL.
-   * Rewrites my.salesforce.com → lightning.force.com.
-   *
-   *   myorg.my.salesforce.com                  → myorg.lightning.force.com
-   *   myorg--uat.sandbox.my.salesforce.com      → myorg--uat.sandbox.lightning.force.com
-   *   myorg.lightning.force.com                → unchanged
+   * my.salesforce.com  →  lightning.force.com
+   * Handles production and sandbox orgs.
    */
   function getLightningBase() {
     const { protocol, hostname } = window.location;
@@ -126,152 +82,109 @@
     return window.location.hostname.includes('.lightning.force.com');
   }
 
-  // ─── Direct REST API (content-script fetch — same origin, cookies sent) ──
+  // ─── Background API bridge ────────────────────────────────────────────────
+  // All Salesforce REST calls go through background.js which reads the sid
+  // cookie and uses it as Authorization: Bearer — bypasses CORS restrictions.
 
-  /**
-   * Run a SOQL query and return the parsed JSON result.
-   * Uses content-script fetch to the same origin so session cookies are
-   * automatically included — no OAuth or background worker needed.
-   */
-  async function sfQuery(soql) {
-    const ver = await getApiVersion();
-    const url = `${getApiBaseUrl()}/services/data/${ver}/query?q=${encodeURIComponent(soql)}`;
-    const resp = await fetch(url, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
+  function bgQuery(query) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'sfQuery', baseUrl: getApiBaseUrl(), query },
+        (resp) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          if (resp && resp.ok) return resolve(resp.data);
+          reject(new Error((resp && resp.error) || 'Unknown error'));
+        }
+      );
     });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(`HTTP ${resp.status}: ${text.slice(0, 150)}`);
-    }
-    return resp.json();
   }
 
-  /**
-   * Fetch any Salesforce REST API URL and return parsed JSON.
-   */
-  async function sfFetch(url) {
-    const resp = await fetch(url, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
+  function bgFetch(url) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'sfFetch', url, baseUrl: getApiBaseUrl() },
+        (resp) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          if (resp && resp.ok) return resolve(resp.data);
+          reject(new Error((resp && resp.error) || 'Unknown error'));
+        }
+      );
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return resp.json();
   }
 
-  // ─── Page / record detection ──────────────────────────────────────────────
+  // ─── Page detection ───────────────────────────────────────────────────────
 
   function objectTypeFromId(id) {
-    if (!id || id.length < 3) return null;
-    return KEY_PREFIX[id.substring(0, 3)] || null;
+    return (id && id.length >= 3) ? (KEY_PREFIX[id.substring(0, 3)] || null) : null;
   }
 
   /**
    * Parse the current URL and return page context.
-   *
-   * Returns:
-   *   { objectType, recordId, isLightning, isRecordPage }
-   *
-   * For non-record pages returns:
-   *   { objectType: null, recordId: null, isLightning, isRecordPage: false }
+   * Returns { objectType, recordId, isLightning, isRecordPage }
    */
   function parsePage() {
-    const url = new URL(window.location.href);
-    const { pathname, searchParams } = url;
-    const onLightningDomain = isOnLightningDomain();
+    const { pathname, searchParams } = new URL(window.location.href);
+    const onLEX = isOnLightningDomain();
 
     // 1. Lightning record: /lightning/r/ObjectType/RecordId/view
     const lexMatch = pathname.match(/\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})\//);
     if (lexMatch) {
-      return {
-        objectType:   lexMatch[1],
-        recordId:     lexMatch[2],
-        isLightning:  true,
-        isRecordPage: true,
-      };
+      return { objectType: lexMatch[1], recordId: lexMatch[2], isLightning: true, isRecordPage: true };
     }
 
-    // 2. Classic record path: /{RecordId} or /{RecordId}/edit etc.
+    // 2. Classic record path: /{RecordId}
     const classicMatch = pathname.match(/^\/([a-zA-Z0-9]{15,18})(?:\/|$)/);
     if (classicMatch) {
       const id = classicMatch[1];
-      // Guard: skip known non-record paths that look like IDs
-      if (/^(setup|lightning|apex|visualforce|servlet)/i.test(id)) {
+      // Skip known non-record segments
+      if (/^(setup|lightning|apex|visualforce|servlet|secur)/i.test(id)) {
         return { objectType: null, recordId: null, isLightning: false, isRecordPage: false };
       }
-      return {
-        objectType:   objectTypeFromId(id),
-        recordId:     id,
-        isLightning:  false,
-        isRecordPage: true,
-      };
+      return { objectType: objectTypeFromId(id), recordId: id, isLightning: false, isRecordPage: true };
     }
 
     // 3. Apex / Visualforce: /apex/PageName?id=RecordId
-    const apexMatch  = pathname.match(/\/apex\/([^/?#]+)/i);
-    const idParam    = searchParams.get('id');
+    const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
+    const idParam   = searchParams.get('id');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
       const objectType = VF_PAGE_MAP[apexMatch[1].toLowerCase()] || null;
-      return {
-        objectType,
-        recordId:     idParam,
-        isLightning:  false,
-        isRecordPage: true,
-      };
+      return { objectType, recordId: idParam, isLightning: false, isRecordPage: true };
     }
 
-    // 4. Generic ?id= fallback (any other SF page with a record ID param)
+    // 4. Generic ?id= fallback
     if (idParam && SF_ID_RE.test(idParam)) {
-      return {
-        objectType:   objectTypeFromId(idParam),
-        recordId:     idParam,
-        isLightning:  onLightningDomain,
-        isRecordPage: true,
-      };
+      return { objectType: objectTypeFromId(idParam), recordId: idParam, isLightning: onLEX, isRecordPage: true };
     }
 
-    // 5. Not a record page — show Classic/Lightning switch buttons anyway
-    return {
-      objectType:   null,
-      recordId:     null,
-      isLightning:  onLightningDomain,
-      isRecordPage: false,
-    };
+    // 5. Non-record page — show Classic/Lightning switch buttons only
+    return { objectType: null, recordId: null, isLightning: onLEX, isRecordPage: false };
   }
 
-  // ─── Object type resolver for Classic record pages ────────────────────────
+  // ─── Object type resolver for Classic pages ───────────────────────────────
 
-  /**
-   * When on a Classic record page and we don't know the object type from
-   * the key-prefix, call the UI API to resolve it.
-   * Falls back to null silently — Lightning button will use the sObject fallback.
-   */
   async function resolveObjectType(recordId) {
     try {
-      const ver  = await getApiVersion();
-      const url  = `${getApiBaseUrl()}/services/data/${ver}/ui-api/records/${recordId}?fields=Id`;
-      const data = await sfFetch(url);
+      // Ask background to hit the UI API — it has the session cookie
+      const url  = `${getApiBaseUrl()}/services/data/v59.0/ui-api/records/${recordId}?fields=Id`;
+      const data = await bgFetch(url);
       return (data && data.apiName) || null;
     } catch {
       return null;
     }
   }
 
-  // ─── URL builders ─────────────────────────────────────────────────────────
+  // ─── URL builders — using /ltng/switcher for reliable view switching ───────
 
-  /** Classic URL for a specific record. Always uses Classic-compatible base. */
+  /**
+   * Classic record URL (used for related-record buttons which must always
+   * open in Classic, not for the "switch view" buttons).
+   */
   function classicRecordUrl(id) {
     return `${getClassicBase()}/${id}?nooverride=1`;
   }
 
-  /** Lightning URL for a record with a known object type. */
-  function lightningRecordUrl(objectType, id) {
-    return `${getLightningBase()}/lightning/r/${objectType}/${id}/view`;
-  }
-
   /**
-   * Current page URL with ?nooverride=1, removing any conflicting override params.
-   * Per spec: strips sfdc.override / sfdc_override before setting nooverride=1.
+   * No Override URL — strips sfdc.override and adds nooverride=1.
    */
   function noOverrideUrl() {
     const url = new URL(window.location.href);
@@ -282,72 +195,70 @@
   }
 
   /**
-   * Build "Switch to Classic" URL for any page.
+   * "Switch to Classic" URL for any page.
    *
-   *   - Lightning record   → Classic domain + /{id}?nooverride=1
-   *   - Non-record LEX page → Classic domain + /ltng/switcher?destination=classic
-   *   - Already Classic    → noOverrideUrl() (safe no-op)
+   * Uses /ltng/switcher?destination=classic which properly changes the
+   * session's interface mode — not just the URL. This works even when
+   * the org defaults to Lightning-only.
+   *
+   * The switcher always lives on the Classic (my.salesforce.com) domain.
+   * The referrer tells Salesforce where to land after switching.
    */
   function switchToClassicUrl(page) {
-    // Record page: navigate to the same record on Classic domain
+    const classicBase = getClassicBase();
+
+    let retUrl;
     if (page && page.isRecordPage && page.recordId) {
-      return classicRecordUrl(page.recordId);
+      // Land on the specific record in Classic (with nooverride)
+      retUrl = `/${page.recordId}?nooverride=1`;
+    } else {
+      // Non-record page: try to land on the equivalent Classic path
+      retUrl = window.location.pathname + window.location.search;
     }
 
-    // Non-record Lightning page: use Salesforce's own switcher
-    if (isOnLightningDomain()) {
-      const ref = encodeURIComponent(window.location.href);
-      return `${getClassicBase()}/ltng/switcher?destination=classic&referrer=${ref}`;
-    }
-
-    // Already on Classic domain — just ensure nooverride
-    return noOverrideUrl();
+    return `${classicBase}/ltng/switcher?destination=classic&referrer=${encodeURIComponent(retUrl)}`;
   }
 
   /**
-   * Build "Switch to Lightning" URL for any page.
+   * "Switch to Lightning" URL for any page.
    *
-   *   - Classic record with known type → /lightning/r/{type}/{id}/view
-   *   - Classic record, type unknown   → /one/one.app#/sObject/{id}/view
-   *   - Non-record Classic page        → /ltng/switcher?destination=lex
-   *   - Already Lightning              → current URL (no-op click)
+   * Uses /ltng/switcher?destination=lex on the Classic domain which
+   * properly changes the session's interface mode before redirecting.
+   * The referrer is the Lightning URL to land on.
    */
   function switchToLightningUrl(page) {
-    const lexBase = getLightningBase();
+    const classicBase   = getClassicBase();
+    const lightningBase = getLightningBase();
 
-    // Record page
+    let retUrl;
     if (page && page.isRecordPage && page.recordId) {
       if (page.objectType) {
-        return lightningRecordUrl(page.objectType, page.recordId);
+        // Known object type: land on the Lightning record page
+        retUrl = `/lightning/r/${page.objectType}/${page.recordId}/view`;
+      } else {
+        // Unknown type: Lightning will resolve the record
+        retUrl = `/lightning/r/${page.recordId}/view`;
       }
-      // Unknown type — use the sObject universal viewer
-      return `${lexBase}/lightning/r/${page.recordId}/view`;
+    } else {
+      // Non-record page: try the Lightning home or equivalent path
+      if (isOnLightningDomain()) {
+        retUrl = window.location.pathname + window.location.search;
+      } else {
+        retUrl = '/lightning/page/home';
+      }
     }
 
-    // Non-record Classic page → use switcher
-    if (!isOnLightningDomain()) {
-      const ref = encodeURIComponent(window.location.href);
-      return `${lexBase}/ltng/switcher?destination=lex&referrer=${ref}`;
-    }
-
-    // Already Lightning — rebuild on lightning domain (handles edge cases)
-    const url  = new URL(window.location.href);
-    url.hostname = url.hostname.replace('.my.salesforce.com', '.lightning.force.com');
-    return url.toString();
+    // Switcher lives on the Classic domain for both directions
+    return `${classicBase}/ltng/switcher?destination=lex&referrer=${encodeURIComponent(retUrl)}`;
   }
 
   // ─── Application data fetcher ─────────────────────────────────────────────
 
-  /**
-   * Fetch Account, Contact, Party IDs for a genesis__Applications__c record.
-   * All queries are made via the same-origin content-script fetch.
-   */
   async function fetchAppData(appId) {
     const result = { accountId: null, contactId: null, partyId: null, error: false };
 
-    // Account + Contact
     try {
-      const data = await sfQuery(
+      const data = await bgQuery(
         `SELECT genesis__Account__c, genesis__Contact__c FROM genesis__Applications__c WHERE Id = '${appId}'`
       );
       if (data.records && data.records.length > 0) {
@@ -359,9 +270,8 @@
       result.error = true;
     }
 
-    // Party
     try {
-      const data = await sfQuery(
+      const data = await bgQuery(
         `SELECT Id FROM clcommon__Party__c WHERE genesis__Application__c = '${appId}' LIMIT 1`
       );
       if (data.records && data.records.length > 0) {
@@ -424,16 +334,9 @@
 
   // ─── Toolbar builder ──────────────────────────────────────────────────────
 
-  /**
-   * Build the toolbar DOM and return the root element.
-   *
-   * @param {object}  page       — from parsePage()
-   * @param {object}  appData    — from fetchAppData() (null during loading)
-   * @param {boolean} isLoading  — show spinners on app buttons
-   */
   function buildToolbar(page, appData, isLoading) {
-    const isApp    = page && page.objectType === APP_OBJECT;
-    const onLEX    = page ? page.isLightning : isOnLightningDomain();
+    const isApp = page && page.objectType === APP_OBJECT;
+    const onLEX = page ? page.isLightning : isOnLightningDomain();
 
     const root = document.createElement('div');
     root.id = TOOLBAR_ID;
@@ -444,10 +347,7 @@
     // ── Logo ─────────────────────────────────────────────────────────────────
     const logo = document.createElement('div');
     logo.className = 'sfn-logo';
-    logo.innerHTML = `
-      <div class="sfn-logo-icon">${ICONS.logo}</div>
-      <span class="sfn-logo-text">SF Nav</span>
-    `;
+    logo.innerHTML = `<div class="sfn-logo-icon">${ICONS.logo}</div><span class="sfn-logo-text">SF Nav</span>`;
     toolbar.appendChild(logo);
 
     // ── Classic ───────────────────────────────────────────────────────────────
@@ -474,7 +374,7 @@
     });
     toolbar.appendChild(lightningBtn);
 
-    // ── Application-specific buttons ──────────────────────────────────────────
+    // ── Application-specific buttons (genesis__Applications__c only) ──────────
     if (isApp) {
       toolbar.appendChild(createDivider());
 
@@ -483,7 +383,7 @@
         id:      'nooverride',
         icon:    ICONS.nooverride,
         label:   'No Override',
-        tooltip: 'Open with ?nooverride=1 (bypasses Visualforce override)',
+        tooltip: 'Open with ?nooverride=1 (bypasses Visualforce page override)',
         variant: 'nooverride',
         onClick: () => window.open(noOverrideUrl(), '_blank'),
       });
@@ -548,32 +448,31 @@
 
       // Status dot
       const dot = document.createElement('div');
-      dot.id = 'sfn-status-dot';
-      dot.className = 'sfn-status-dot' + (isLoading ? ' sfn-status-dot--loading' : '');
-      dot.title = isLoading ? 'Loading related records…' : 'Records loaded';
+      dot.id        = 'sfn-status-dot';
+      dot.className = `sfn-status-dot${isLoading ? ' sfn-status-dot--loading' : ''}`;
+      dot.title     = isLoading ? 'Loading related records…' : 'Records loaded';
       toolbar.appendChild(dot);
 
-      // ── Apply states based on loading / data ────────────────────────────────
+      // Apply states
       if (isLoading) {
         [accountBtn, contactBtn, partyBtn, openAllBtn].forEach((b) => setLoading(b, true));
       } else {
         if (!appData || !appData.accountId) {
           markDisabled(accountBtn, appData && appData.error
-            ? 'Account lookup failed — check API access'
+            ? 'Account lookup failed — verify API access is enabled'
             : 'No related Account found');
         }
         if (!appData || !appData.contactId) {
           markDisabled(contactBtn, appData && appData.error
-            ? 'Contact lookup failed — check API access'
+            ? 'Contact lookup failed — verify API access is enabled'
             : 'No related Contact found');
         }
         if (!appData || !appData.partyId) {
           markDisabled(partyBtn, 'No related Party found');
         }
-
         if (appData && appData.error) {
           dot.classList.add('sfn-status-dot--error');
-          dot.title = 'API error — some records could not be loaded';
+          dot.title = 'API error — check Setup > Profiles > API Enabled';
         }
       }
     }
@@ -589,7 +488,7 @@
 
     const page = parsePage();
 
-    // For Classic record pages with unknown prefix, try UI API resolution
+    // For Classic record pages with unknown prefix, resolve via UI API
     if (page && page.isRecordPage && page.recordId && !page.objectType) {
       page.objectType = await resolveObjectType(page.recordId);
     }
@@ -597,13 +496,12 @@
     const isApp = page && page.objectType === APP_OBJECT;
 
     if (isApp) {
-      // Show toolbar immediately with loading spinners
+      // Inject immediately with loading spinners on data-dependent buttons
       document.body.appendChild(buildToolbar(page, null, true));
 
-      // Fetch related data asynchronously
       const appData = await fetchAppData(page.recordId);
 
-      // Swap in the final toolbar
+      // Swap in the final state
       const old = document.getElementById(TOOLBAR_ID);
       if (old) old.remove();
       document.body.appendChild(buildToolbar(page, appData, false));
@@ -612,7 +510,7 @@
     }
   }
 
-  // ─── SPA / Lightning navigation support ──────────────────────────────────
+  // ─── SPA navigation support (Lightning is a SPA) ──────────────────────────
 
   let lastUrl = location.href;
 
