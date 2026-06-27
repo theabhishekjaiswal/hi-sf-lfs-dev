@@ -1,50 +1,56 @@
-/* SF Navigator – Premium Toolbar Styles */
+/* SF Navigator v2 — Premium Toolbar Styles
+ * System fonts only (Google Fonts @import is blocked by Salesforce CSP).
+ */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap');
+/* ─── Root / positioning ────────────────────────────────────────────────── */
 
 #sf-navigator-root {
   all: initial;
   position: fixed;
-  top: 14px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2147483647;
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', Arial, sans-serif;
   pointer-events: none;
 }
+
+/* ─── Toolbar pill ──────────────────────────────────────────────────────── */
 
 #sf-navigator-toolbar {
   pointer-events: all;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: 3px;
+  padding: 5px 8px;
   border-radius: 50px;
 
   /* Glassmorphism */
-  background: rgba(12, 16, 28, 0.82);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(9, 13, 24, 0.88);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
 
-  /* Border */
+  /* Border — subtle rim light */
   border: 1px solid rgba(255, 255, 255, 0.10);
 
-  /* Shadow layers */
+  /* Layered shadows for depth */
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.30),
-    0 8px 32px rgba(0, 0, 0, 0.40),
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 6px 28px rgba(0, 0, 0, 0.55),
+    0 20px 60px rgba(0, 0, 0, 0.35),
     0 0 0 0.5px rgba(255, 255, 255, 0.04) inset,
-    0 1px 0 rgba(255, 255, 255, 0.08) inset;
+    0 1px 0 rgba(255, 255, 255, 0.07) inset;
 
-  /* Entrance animation */
-  animation: sfn-slide-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Slide-in entrance */
+  animation: sfn-slide-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
   transform-origin: top center;
 }
 
 @keyframes sfn-slide-in {
   from {
     opacity: 0;
-    transform: translateY(-10px) scale(0.96);
+    transform: translateY(-14px) scale(0.94);
   }
   to {
     opacity: 1;
@@ -52,77 +58,85 @@
   }
 }
 
-/* Logo mark */
+/* ─── Logo ──────────────────────────────────────────────────────────────── */
+
 .sfn-logo {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px 0 4px;
-  margin-right: 2px;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  padding: 0 8px 0 3px;
+  margin-right: 1px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
 }
 
 .sfn-logo-icon {
   width: 22px;
   height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #0176d3, #032d60);
+  border-radius: 7px;
+  background: linear-gradient(135deg, #0176d3 0%, #032d60 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(1, 118, 211, 0.4);
-}
-
-.sfn-logo-icon svg {
-  width: 12px;
-  height: 12px;
-}
-
-.sfn-logo-text {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.75);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* Divider */
-.sfn-divider {
-  width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 0 2px;
+  box-shadow:
+    0 2px 8px rgba(1, 118, 211, 0.5),
+    0 0 0 1px rgba(1, 118, 211, 0.3) inset;
   flex-shrink: 0;
 }
 
-/* Button base */
+.sfn-logo-text {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.65);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ─── Divider ───────────────────────────────────────────────────────────── */
+
+.sfn-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 3px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+/* ─── Button base ───────────────────────────────────────────────────────── */
+
 .sfn-btn {
   position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 11px;
+  padding: 5px 10px;
   border-radius: 40px;
   border: none;
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.01em;
   white-space: nowrap;
   transition:
-    background 0.18s ease,
+    background 0.16s ease,
     transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.18s ease,
-    opacity 0.18s ease;
+    box-shadow 0.16s ease,
+    color 0.16s ease,
+    opacity 0.16s ease;
   background: transparent;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.68);
   outline: none;
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.sfn-btn svg {
+.sfn-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -131,126 +145,172 @@
   background: rgba(255, 255, 255, 0.09);
   color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 3px 12px rgba(0,0,0,0.25);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.3);
 }
 
-.sfn-btn:hover svg {
-  transform: scale(1.12);
+.sfn-btn:hover .sfn-btn-icon {
+  transform: scale(1.14);
 }
 
 .sfn-btn:active {
-  transform: translateY(0) scale(0.96);
+  transform: translateY(0) scale(0.95);
   box-shadow: none;
   background: rgba(255, 255, 255, 0.06);
+  transition-duration: 0.08s;
 }
 
-/* Variant – Classic (warm amber) */
+/* Disabled state */
+.sfn-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ─── Variant: Classic (warm amber) ─────────────────────────────────────── */
+
 .sfn-btn--classic {
-  color: rgba(255, 195, 80, 0.85);
+  color: rgba(255, 195, 80, 0.88);
 }
 .sfn-btn--classic:hover {
-  background: rgba(255, 180, 50, 0.12);
+  background: rgba(255, 180, 50, 0.13);
   color: #ffd166;
-  box-shadow: 0 3px 12px rgba(255, 180, 50, 0.18);
+  box-shadow: 0 3px 14px rgba(255, 165, 30, 0.22);
 }
 
-/* Variant – Lightning (electric blue) */
+/* Active/current view indicator */
+.sfn-btn--classic.sfn-btn--active {
+  background: rgba(255, 180, 50, 0.16);
+  color: #ffd166;
+  box-shadow:
+    0 0 0 1px rgba(255, 195, 80, 0.22) inset,
+    0 2px 10px rgba(255, 165, 30, 0.15);
+}
+
+/* ─── Variant: Lightning (electric blue) ────────────────────────────────── */
+
 .sfn-btn--lightning {
-  color: rgba(80, 175, 255, 0.85);
+  color: rgba(80, 175, 255, 0.88);
 }
 .sfn-btn--lightning:hover {
-  background: rgba(80, 175, 255, 0.12);
+  background: rgba(80, 175, 255, 0.13);
   color: #74c0fc;
-  box-shadow: 0 3px 12px rgba(80, 175, 255, 0.18);
+  box-shadow: 0 3px 14px rgba(60, 160, 255, 0.22);
 }
 
-/* Variant – No Override (soft purple) */
+.sfn-btn--lightning.sfn-btn--active {
+  background: rgba(80, 175, 255, 0.16);
+  color: #74c0fc;
+  box-shadow:
+    0 0 0 1px rgba(80, 175, 255, 0.22) inset,
+    0 2px 10px rgba(60, 160, 255, 0.15);
+}
+
+/* ─── Variant: No Override (soft purple) ────────────────────────────────── */
+
 .sfn-btn--nooverride {
-  color: rgba(180, 140, 255, 0.85);
+  color: rgba(180, 140, 255, 0.88);
 }
 .sfn-btn--nooverride:hover {
-  background: rgba(160, 120, 255, 0.12);
+  background: rgba(160, 120, 255, 0.13);
   color: #c4a8ff;
-  box-shadow: 0 3px 12px rgba(160, 120, 255, 0.18);
+  box-shadow: 0 3px 14px rgba(140, 100, 255, 0.22);
 }
 
-/* Variant – Account (teal) */
+/* ─── Variant: Account (teal) ───────────────────────────────────────────── */
+
 .sfn-btn--account {
-  color: rgba(80, 210, 180, 0.85);
+  color: rgba(72, 207, 174, 0.88);
 }
 .sfn-btn--account:hover {
-  background: rgba(60, 200, 170, 0.12);
+  background: rgba(50, 200, 165, 0.13);
   color: #63e6be;
-  box-shadow: 0 3px 12px rgba(60, 200, 170, 0.18);
+  box-shadow: 0 3px 14px rgba(40, 190, 155, 0.22);
 }
 
-/* Variant – Contact (rose) */
+/* ─── Variant: Contact (rose) ───────────────────────────────────────────── */
+
 .sfn-btn--contact {
-  color: rgba(255, 130, 130, 0.85);
+  color: rgba(255, 120, 120, 0.88);
 }
 .sfn-btn--contact:hover {
-  background: rgba(255, 110, 110, 0.12);
+  background: rgba(255, 100, 100, 0.13);
   color: #ff9b9b;
-  box-shadow: 0 3px 12px rgba(255, 110, 110, 0.18);
+  box-shadow: 0 3px 14px rgba(255, 90, 90, 0.22);
 }
 
-/* Variant – Party (gold) */
+/* ─── Variant: Party (gold) ─────────────────────────────────────────────── */
+
 .sfn-btn--party {
-  color: rgba(255, 210, 100, 0.85);
+  color: rgba(255, 205, 80, 0.88);
 }
 .sfn-btn--party:hover {
-  background: rgba(255, 200, 80, 0.12);
+  background: rgba(255, 195, 60, 0.13);
   color: #ffd43b;
-  box-shadow: 0 3px 12px rgba(255, 200, 80, 0.18);
+  box-shadow: 0 3px 14px rgba(255, 185, 50, 0.22);
 }
 
-/* Variant – Open All (gradient accent) */
+/* ─── Variant: Open All (gradient accent) ───────────────────────────────── */
+
 .sfn-btn--openall {
-  background: linear-gradient(135deg, rgba(1, 118, 211, 0.25), rgba(100, 65, 200, 0.20));
-  color: rgba(160, 200, 255, 0.9);
-  border: 1px solid rgba(100, 160, 255, 0.18);
+  background: linear-gradient(135deg, rgba(1, 118, 211, 0.2), rgba(100, 65, 200, 0.16));
+  color: rgba(160, 200, 255, 0.92);
+  border: 1px solid rgba(100, 160, 255, 0.15);
+  padding: 4px 10px;
 }
 .sfn-btn--openall:hover {
-  background: linear-gradient(135deg, rgba(1, 118, 211, 0.38), rgba(100, 65, 200, 0.30));
+  background: linear-gradient(135deg, rgba(1, 118, 211, 0.34), rgba(100, 65, 200, 0.28));
   color: #fff;
-  border-color: rgba(100, 160, 255, 0.32);
-  box-shadow: 0 3px 16px rgba(1, 118, 211, 0.28);
+  border-color: rgba(100, 160, 255, 0.3);
+  box-shadow: 0 3px 18px rgba(1, 118, 211, 0.32);
 }
 
-/* Loading spinner */
+/* ─── Variant: Error state ──────────────────────────────────────────────── */
+
+.sfn-btn--error {
+  color: rgba(255, 100, 100, 0.65) !important;
+}
+
+/* ─── Loading spinner ───────────────────────────────────────────────────── */
+
 .sfn-btn.sfn-loading {
   pointer-events: none;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .sfn-btn.sfn-loading .sfn-btn-icon {
-  animation: sfn-spin 0.8s linear infinite;
+  animation: sfn-spin 0.75s linear infinite;
 }
 
 @keyframes sfn-spin {
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip */
+/* ─── Tooltip ───────────────────────────────────────────────────────────── */
+
 .sfn-btn::after {
   content: attr(data-tooltip);
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 9px);
   left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  background: rgba(10, 14, 26, 0.95);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 11px;
+  transform: translateX(-50%) translateY(5px);
+  background: rgba(7, 10, 20, 0.97);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 10.5px;
   font-weight: 500;
   padding: 5px 9px;
   border-radius: 8px;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
   z-index: 10;
+  font-family: inherit;
 }
 
 .sfn-btn:hover::after {
@@ -258,17 +318,66 @@
   transform: translateX(-50%) translateY(0);
 }
 
-/* Pill label inside button */
+/* Don't show tooltip while loading */
+.sfn-btn.sfn-loading::after {
+  display: none;
+}
+
+/* ─── Status dot ────────────────────────────────────────────────────────── */
+
+.sfn-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-left: 2px;
+  flex-shrink: 0;
+  box-shadow: 0 0 5px rgba(34, 197, 94, 0.6);
+  animation: sfn-pulse 2.5s ease-in-out infinite;
+}
+
+.sfn-status-dot.sfn-status-dot--error {
+  background: #ef4444;
+  box-shadow: 0 0 5px rgba(239, 68, 68, 0.6);
+  animation: none;
+}
+
+.sfn-status-dot.sfn-status-dot--loading {
+  background: #f59e0b;
+  box-shadow: 0 0 5px rgba(245, 158, 11, 0.6);
+  animation: sfn-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes sfn-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+
+/* ─── Button label ──────────────────────────────────────────────────────── */
+
 .sfn-btn-label {
   line-height: 1;
 }
 
-/* Collapse on narrow screens */
-@media (max-width: 860px) {
+/* ─── Responsive: collapse labels on narrow screens ─────────────────────── */
+
+@media (max-width: 900px) {
   .sfn-btn-label {
     display: none;
   }
   .sfn-btn {
-    padding: 7px;
+    padding: 6px 7px;
+  }
+  .sfn-btn--openall {
+    padding: 5px 7px;
+  }
+}
+
+@media (max-width: 600px) {
+  .sfn-logo-text {
+    display: none;
+  }
+  .sfn-logo {
+    padding-right: 4px;
   }
 }
