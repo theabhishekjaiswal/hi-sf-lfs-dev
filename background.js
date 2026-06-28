@@ -98,7 +98,7 @@ async function handleGetObjects(msg, sender) {
   // 3. Fetch Apex Classes (Parallel)
   const classesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+LIMIT+2000`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass`;
       const resp = await fetch(qUrl, { headers });
       if (resp.ok) {
         const d = await resp.json();
@@ -113,7 +113,7 @@ async function handleGetObjects(msg, sender) {
   // 4. Fetch Apex Triggers (Parallel)
   const triggersPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+LIMIT+2000`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger`;
       const resp = await fetch(qUrl, { headers });
       if (resp.ok) {
         const d = await resp.json();
@@ -128,7 +128,7 @@ async function handleGetObjects(msg, sender) {
   // 5. Fetch Visualforce Pages (Parallel)
   const pagesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+LIMIT+2000`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage`;
       const resp = await fetch(qUrl, { headers });
       if (resp.ok) {
         const d = await resp.json();
@@ -143,7 +143,7 @@ async function handleGetObjects(msg, sender) {
   // 6. Fetch Custom Labels via Tooling API (Parallel)
   const labelsPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,Name,MasterLabel+FROM+ExternalString+LIMIT+1500`;
+      const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,Name,MasterLabel+FROM+ExternalString`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();

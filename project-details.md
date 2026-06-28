@@ -1,169 +1,108 @@
-# SF Navigator — Project Requirements
+# SF Pilot — Project Requirements & Details
 
 ## What We're Building
 
-**SF Navigator** is a premium Chrome Extension (Manifest V3) for Salesforce power users. It injects a floating, glassmorphism-styled toolbar at the top of any Salesforce record page, giving one-click navigation between Classic and Lightning views, and — for `genesis__Applications__c` records specifically — quick access to related Account, Contact, and Party records.
+**SF Pilot** is a premium, high-performance Chrome Extension (Manifest V3) designed for Salesforce administrators, developers, and power users. It combines a floating context-aware record navigation toolbar with an always-accessible **Developer Command Palette** to drastically accelerate daily Salesforce navigation and metadata management.
 
-It is built with **vanilla HTML, CSS, and JavaScript only** — no frameworks, no build tools, no external libraries.
+The extension is built strictly using **vanilla HTML, CSS, and JavaScript** to guarantee zero performance overhead, zero dependencies, and instant execution.
 
 ---
 
 ## 1. Technology Constraints
 
-- Plain HTML, CSS, and Vanilla JavaScript only.
-- **Not allowed:** React, Angular, Vue, TypeScript, Tailwind, Bootstrap, jQuery, build tools, or any external libraries.
-- Must be lightweight, clean, fast, and easy to maintain.
-- Chrome Extension using **Manifest V3**.
+* **Pure Vanilla Only:** Standard HTML5, CSS3, and ES6+ JavaScript. No frameworks (React/Vue), no TypeScript, no build tools (Webpack/Vite), and no CSS frameworks (Tailwind/Bootstrap).
+* **Manifest Version:** Chrome Extension Manifest V3.
+* **Lightweight Footprint:** Memory footprint is kept minimal. Metadata queries are lazy-loaded, run in parallel in the background worker, and cached in-memory.
 
 ---
 
-## 2. UI / Design Requirements
+## 2. Floating Context Record Toolbar
 
-- Completely new, premium UI — should feel like a modern SaaS product, not a typical Salesforce utility bar.
-- **Floating toolbar** positioned at the **top center** of the page.
-- **Glassmorphism-inspired** design (frosted blur, translucency).
-- Modern, layered shadows.
-- Smooth hover and active-state animations.
-- **Rounded, pill-shaped** layout.
-- Premium, Salesforce-like styling and color palette.
-- Responsive layout (adapts to narrow viewports).
-- Compact but elegant — no clutter, no outdated button styles.
-- Excellent spacing, typography, and iconography.
-- Should look and feel like a polished, commercial-grade extension — good enough for daily use by Salesforce admins, business analysts, and loan-processing teams.
+Injected at the **top center** of active Salesforce record pages using a premium frosted-glass (glassmorphism) layout.
 
-### Button Requirements
+### Scope & Visibility
+* Appears **only** on active Salesforce record pages (standard and custom objects).
+* Ignored on homepages, list views, setup menus, and metadata configurations.
+* **SPA Transition Lock:** Employs an `isNavigating` flag during Lightning Single Page App (SPA) transitions, silencing DOM MutationObservers to prevent race conditions or infinite injection loops. This guarantees reliable rendering with **zero page reloads required**.
 
-Every button must have:
-- Hover animation
-- Active (pressed) animation
-- Tooltip on hover
-- Icon + text label
-- A loading state when data is being fetched
+### Visibility & Actions Table
+
+| Page Type | Active Buttons | Navigation Behavior |
+| :--- | :--- | :--- |
+| **Any Record Page** | Classic, Lightning | Opens the current record in Classic or Lightning (new tab). Fades out and disables the button corresponding to the active view. |
+| **`genesis__Applications__c` Record** | Classic, Lightning, No Override, Account, Contact, Party, Open All | Fetches related Account, Contact, and Party IDs using REST API queries in the background and enables quick links. Account, Contact, and Party always open in Classic. |
 
 ---
 
-## 3. Visibility Rules
+## 3. Developer Command Palette (Side Pilot Search)
 
-| Page Type | Buttons Shown |
-|---|---|
-| Any Salesforce record page | Classic, Lightning |
-| `genesis__Applications__c` record page | Classic, Lightning, No Override, Party, Account, Contact, Open All |
-| Non-record page | Toolbar does not appear |
+An always-visible search button `(#sfp-side-btn)` floats on the middle-right edge of **every Salesforce page** (including Setup, List Views, and standard layouts). 
 
----
+### Activation
+* **Clicking** the side wing button.
+* Pressing the global keyboard shortcuts:
+  * **`Ctrl + Space`** (Windows / Linux)
+  * **`Cmd + Space`** (macOS)
 
-## 4. Core Navigation Buttons
+### Scope of Autocomplete Search
+Queries and maps multiple Salesforce metadata directories in parallel via the background script:
 
-### Classic
-- Opens the **current record** in Salesforce Classic.
-- Opens in a **new tab**.
-- Must work on **any** Salesforce record page (not just Applications).
+1. **Objects:** Standard and Custom sObjects.
+2. **Apex Classes:** All Apex Code files (`ApexClass`).
+3. **Apex Triggers:** Event triggers (`ApexTrigger`).
+4. **Visualforce Pages:** VF markup templates (`ApexPage`).
+5. **Custom Labels:** All localization variables (`ExternalString` queried via Tooling API).
+6. **Custom Settings:** Custom setting objects (queried via `EntityDefinition` where `IsCustomSetting = true`). Deduplicated from the default sObjects list automatically.
 
-### Lightning
-- Opens the **current record** in Salesforce Lightning.
-- Opens in a **new tab**.
-- Must work on **any** Salesforce record page.
+### High-Contrast Color Tags
+Every autocomplete result has a labeled pill tag identifying its metadata type:
+* **`OBJECT`** (Green) — Standard/Custom sObjects.
+* **`CLASS`** (Purple) — Apex Classes.
+* **`TRIGGER`** (Orange) — Apex Triggers.
+* **`PAGE`** (Blue) — Visualforce Pages.
+* **`LABEL`** (Gold) — Custom Labels.
+* **`SETTING`** (Teal) — Custom Settings.
 
----
-
-## 5. Application Record Logic (`genesis__Applications__c` only)
-
-When the current record is a `genesis__Applications__c`, the extension must retrieve:
-- Account Id
-- Contact Id
-- Party Id
-
-### Account & Contact Lookup
-
-Account and Contact are lookup fields directly on the Application object.
-
-```sql
-SELECT genesis__Account__c, genesis__Contact__c
-FROM genesis__Applications__c
-WHERE Id = '${appId}'
-```
-
-### Party Lookup
-
-Party is **not** a direct lookup field — it must be queried from a related object.
-
-```sql
-SELECT Id
-FROM clcommon__Party__c
-WHERE genesis__Application__c = '${appId}'
-LIMIT 1
-```
+### Setup Redirection Logic (Salesforce Classic)
+Selecting a metadata element routes you directly to its admin Setup screen in Classic:
+* **Standard Objects / Settings:** Opens the Fields List Setup page.
+* **Custom Objects:** Opens the Custom Object definition screen. Maps using the **15-character Classic Setup ID** formatted as `/{15_char_id}?setupid=CustomObjects` to prevent access or URL errors.
+* **Apex / Visualforce / Custom Labels:** Opens the code editor or detail Setup panel using their unique Salesforce ID directly.
 
 ---
 
-## 6. Application-Specific Buttons
+## 4. Performance & Resilience Design
 
-### No Override
-- Visible only on `genesis__Applications__c` records.
-- On click: opens the **current** Application record in a **new tab**.
-- Appends `?nooverride=1` to the URL and remove `?sfdc.override=1` or any other override parameters.
-- If override parameters already exist in the URL, they should be updated appropriately rather than duplicated.
-
-### Account
-- Opens the related Account record in a **new tab**.
-- Always opens in **Classic** view, regardless of current view.
-
-### Contact
-- Opens the related Contact record in a **new tab**.
-- Always opens in **Classic** view, regardless of current view.
-
-### Party
-- Opens the related Party record in a **new tab**.
-- Always opens in **Classic** view, regardless of current view.
-
-### Open All
-- Opens all related records in separate tabs, immediately, in this order:
-  1. No Override (current Application record)
-  2. Account
-  3. Contact
-  4. Party
+* **Zero Page-Load Impact:** No Salesforce APIs are queried on page load. All metadata indexing is lazy-loaded (triggered only when the search panel is opened for the first time).
+* **Parallel API Requests:** Background metadata compilation queries are run concurrently, reducing load latency.
+* **CORS-Free background Service Worker:** Requests bypass browser preflights using background host permissions.
+* **Query Timeout Guard:** A **2.0-second AbortController timeout** is attached to Tooling queries. If the Tooling API is slow or blocked, it aborts cleanly, and the search suggestions still load instantly with the remaining categories.
+* **Rendering Optimization:** Search results are sliced to the top 60 matches (`.slice(0, 60)`). This limits DOM rendering load and prevents typing lag.
 
 ---
 
-## 7. View Preference Rules
+## 5. Security & Authentication
 
-- The **preferred/default view is Classic** for related records.
-- Account, Contact, and Party buttons must **always** open in Classic — never Lightning.
-- The Classic and Lightning buttons must **explicitly force** the selected view, regardless of what view the user is currently in (Classic or Lightning).
-
----
-
-## 8. Salesforce Access & Authentication
-
-- Use the **currently authenticated Salesforce session** in the browser.
-- Do **not** prompt the user for:
-  - Username
-  - Password
-  - OAuth login
-- Do **not** store credentials.
-- Do **not** store access tokens.
-- All data access goes through Salesforce REST APIs, riding on the existing authenticated browser session (`credentials: 'include'`).
+* **Session Authorization:** Rides on the browser's active, authenticated session (`credentials: 'include'`). The extension does not store, request, or transmit user credentials.
+* **Sid Cookie Extraction:** The background script reads the `sid` cookie valid for the Classic domain (`*.my.salesforce.com` or `*.sandbox.my.salesforce.com`), which acts as the OAuth Bearer token for REST requests.
+* **Non-Org Domain Guard:** Explicitly exits and remains disabled on public-facing Salesforce portals (e.g. Trailhead, AppExchange, Help, Trust, success, and login pages) to prevent shortcut capture.
 
 ---
 
-## 9. Engineering Principles
+## 6. Sandbox & Scratch Org Support
 
-- Keep the implementation simple.
-- Avoid over-engineering, unnecessary abstractions, unnecessary modules, and unnecessary observers.
-- Avoid excessive state management or complex architecture.
-- Prioritize reliability and maintainability over cleverness.
+Matches and permissions are configured to support multi-subdomain sandbox and developer scratch org environments recursive structures:
+* `https://*.sandbox.lightning.force.com/*`
+* `https://*.sandbox.my.salesforce.com/*`
+* `https://*.develop.lightning.force.com/*`
+* `https://*.develop.my.salesforce.com/*`
 
-### Final Result Should Be:
-- Visually outstanding
-- Extremely simple internally
-- Fast
-- Easy to debug
-- Suitable for Salesforce Sandbox usage
-- Production-quality user experience
+Domain normalizers in `background.js` and `content.js` automatically map sandboxes to their Classic Sandbox subdomains (`.sandbox.my.salesforce.com` / `.develop.my.salesforce.com`) to extract the appropriate session cookies.
 
 ---
 
-## 10. Known Edge Cases (from real-world testing)
+## 7. Developer Branding Credit
 
-- **Visualforce / Apex pages:** Some Application records are viewed via custom VF pages (e.g. `/apex/ApplicationDetails?id=...`) rather than standard Lightning/Classic record URLs. The extension must detect these via a `VF_PAGE_OBJECT_MAP` lookup of known page names to object types.
-- **Sandbox Classic navigation:** Lightning sandbox domains (`*.lightning.force.com`) must be correctly rewritten to their My Domain Classic equivalent (`*.my.salesforce.com`) so the Classic button and all "always open in Classic" buttons (Account, Contact, Party) work correctly inside sandboxes — not just production orgs.
+* Description in `manifest.json`: *"Premium Salesforce navigation toolbar. Made with ❤️ by Abhishek Jaiswal."*
+* Search modal footer includes a micro-animated beating red heart and an electric-blue hover glow on the author's name, which opens their LinkedIn profile (`https://www.linkedin.com/in/theabhishekjaiswal12/`) in a new tab when clicked.
+* Record toolbar logo includes a hover title credit: *"SF Pilot — Made with ❤️ by Abhishek Jaiswal"*.

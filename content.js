@@ -491,10 +491,13 @@
     if (document.getElementById(SIDE_BTN_ID)) return;
     if (!document.documentElement) return;
 
+    // Check if user is on macOS
+    const isMac = /Mac|iPhone|iPod|iPad/i.test(navigator.platform || navigator.userAgent);
+
     // 1. Create Side Faded Button
     const sideBtn = document.createElement('div');
     sideBtn.id = SIDE_BTN_ID;
-    sideBtn.title = 'SF Pilot Search (Ctrl+Space or click)';
+    sideBtn.title = isMac ? 'SF Pilot Search (Option+Space or click)' : 'SF Pilot Search (Ctrl+Space or click)';
     sideBtn.innerHTML = `<span class="sfp-side-icon">${ICONS.logo}</span>`;
     sideBtn.addEventListener('click', openSearchModal);
     document.documentElement.appendChild(sideBtn);
@@ -724,9 +727,14 @@
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // Global Keyboard Shortcut (Ctrl+Space or Cmd+Space to toggle Search Panel)
+  // Global Keyboard Shortcut (Option+Space on Mac, Ctrl+Space on Windows to toggle Search Panel)
   window.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+    const isMac = /Mac|iPhone|iPod|iPad/i.test(navigator.platform || navigator.userAgent);
+    const isHotkey = isMac
+      ? (e.altKey && e.code === 'Space') // Option + Space on Mac
+      : (e.ctrlKey && e.code === 'Space'); // Ctrl + Space on Windows/Linux
+
+    if (isHotkey) {
       e.preventDefault();
       const m = document.getElementById(MODAL_ID);
       if (m && m.classList.contains('sfp-modal--open')) {
