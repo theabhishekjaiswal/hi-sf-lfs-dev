@@ -603,3 +603,47 @@
 @keyframes sfp-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ─── Search Panel Footer Branding ───────────────────────────────────────── */
+
+.sfp-search-footer {
+  text-align: center;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.26);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 10px;
+  margin-top: 4px;
+  font-family: inherit;
+  letter-spacing: 0.4px;
+  transition: color 0.22s ease;
+  user-select: none;
+}
+
+.sfp-search-panel:hover .sfp-search-footer {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.sfp-heart {
+  color: #ff3b30;
+  margin: 0 3px;
+  display: inline-block;
+  animation: sfp-heart-pulse 1.3s infinite ease-in-out;
+}
+
+.sfp-author {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.58);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.22s ease, text-shadow 0.22s ease;
+}
+
+.sfp-search-panel:hover .sfp-author {
+  color: #2196f3;
+  text-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
+}
+
+@keyframes sfp-heart-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}

@@ -54,24 +54,78 @@ async function handleGetObjects(msg, sender) {
   if (sid) headers['Authorization'] = `Bearer ${sid}`;
 
   const ver = await getApiVersion(apiBase, headers);
-  const url = `${apiBase}/services/data/${ver}/sobjects`;
 
-  const resp = await fetch(url, { headers });
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch objects: HTTP ${resp.status}`);
+  const customObjectIds = new Map();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1800); // 1.8s timeout
+
+  // 1. Tooling API query for CustomObject 01I Setup IDs (Parallel)
+  const toolingPromise = (async () => {
+    try {
+      const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject`;
+      const qResp = await fetch(customQueryUrl, { headers, signal: controller.signal });
+      if (qResp.ok) {
+        const qData = await qResp.json();
+        if (qData && Array.isArray(qData.records)) {
+          for (const r of qData.records) {
+            const ns = r.NamespacePrefix ? `${r.NamespacePrefix}__` : '';
+            const devName = r.DeveloperName || '';
+            const baseApiName = ns + devName;
+            
+            // Map both standard custom objects (__c) and custom metadata (__mdt) in lowercase
+            customObjectIds.set((baseApiName + '__c').toLowerCase(), r.Id);
+            customObjectIds.set((baseApiName + '__mdt').toLowerCase(), r.Id);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] CustomObject pre-fetch skipped or timed out:', e.message);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  })();
+
+  // 2. Fetch sObjects list (Parallel)
+  const sobjectsPromise = (async () => {
+    const url = `${apiBase}/services/data/${ver}/sobjects`;
+    const resp = await fetch(url, { headers });
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch objects: HTTP ${resp.status}`);
+    }
+    return resp.json();
+  })();
+
+  try {
+    const [_, data] = await Promise.all([toolingPromise, sobjectsPromise]);
+
+    if (data && Array.isArray(data.sobjects)) {
+      const list = data.sobjects
+        .filter(o => o.queryable && o.layoutable)
+        .map(o => {
+          let setupId = null;
+          if (o.custom) {
+            setupId = customObjectIds.get(o.name.toLowerCase()) || null;
+          } else {
+            setupId = o.name;
+          }
+          return {
+            label: o.label || '',
+            name: o.name || '',
+            custom: o.custom,
+            setupId: setupId
+          };
+        });
+      
+      list.sort((a, b) => a.label.localeCompare(b.label));
+      objectsCache.set(hostname, list);
+      return list;
+    }
+  } catch (e) {
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
-  const data = await resp.json();
-  if (data && Array.isArray(data.sobjects)) {
-    // Filter to layoutable objects to get standard/custom data objects
-    const list = data.sobjects
-      .filter(o => o.queryable && o.layoutable)
-      .map(o => ({ label: o.label || '', name: o.name || '' }));
-    
-    list.sort((a, b) => a.label.localeCompare(b.label));
-    objectsCache.set(hostname, list);
-    return list;
-  }
   return [];
 }
 

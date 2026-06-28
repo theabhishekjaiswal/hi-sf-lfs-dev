@@ -10,9 +10,26 @@
 (function () {
   'use strict';
 
-  // ─── Guard: skip auth / setup / API-only paths ───────────────────────────
+  // ─── Guard: skip public portals, logins, and API paths ───────────────────
 
-  if (/^\/(secur\/|login|services\/|oauth2\/|setup\/secur)/i.test(window.location.pathname)) return;
+  const hostname = window.location.hostname.toLowerCase();
+  const publicSalesforceDomains = [
+    'developer.salesforce.com',
+    'trailhead.salesforce.com',
+    'help.salesforce.com',
+    'trust.salesforce.com',
+    'appexchange.salesforce.com',
+    'login.salesforce.com',
+    'test.salesforce.com',
+    'success.salesforce.com',
+    'compliance.salesforce.com',
+    'status.salesforce.com',
+    'www.salesforce.com'
+  ];
+
+  if (publicSalesforceDomains.includes(hostname) || /^\/(secur\/|login|services\/|oauth2\/|setup\/secur)/i.test(window.location.pathname)) {
+    return;
+  }
 
   // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -321,6 +338,7 @@
     // Logo
     const logo = document.createElement('div');
     logo.className = 'sfn-logo';
+    logo.title = 'SF Pilot — Made with ❤️ by Abhishek Jaiswal';
     logo.innerHTML = `<div class="sfn-logo-icon">${ICONS.logo}</div><span class="sfn-logo-text">SF Pilot</span>`;
     toolbar.appendChild(logo);
 
@@ -493,6 +511,9 @@
           <input type="text" class="sfp-search-input" placeholder="Search Object or API name..." autocomplete="off">
         </div>
         <div class="sfp-results-list"></div>
+        <div class="sfp-search-footer">
+          SF Pilot <span class="sfp-heart">♥</span> Made with love by <a href="https://www.linkedin.com/in/theabhishekjaiswal12/" target="_blank" class="sfp-author">Abhishek Jaiswal</a>
+        </div>
       </div>
     `;
 
@@ -653,7 +674,27 @@
 
   function openObjectInClassic(objectName) {
     closeSearchModal();
-    const url = `${getClassicBase()}/${objectName}`;
+    const obj = objectsList.find(o => o.name === objectName);
+    
+    let destination;
+    if (obj) {
+      if (obj.custom) {
+        // Custom Object Setup definition page (using 15-character ID)
+        if (obj.setupId) {
+          const setupId15 = obj.setupId.substring(0, 15);
+          destination = `${setupId15}?setupid=CustomObjects`;
+        } else {
+          destination = `p/setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
+        }
+      } else {
+        // Standard Object fields setup page
+        destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
+      }
+    } else {
+      destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
+    }
+
+    const url = `${getClassicBase()}/${destination}`;
     window.open(url, '_blank');
   }
 
@@ -661,9 +702,9 @@
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // Global Keyboard Shortcut (Ctrl+Space to toggle Search Panel)
+  // Global Keyboard Shortcut (Ctrl+Space or Cmd+Space to toggle Search Panel)
   window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.code === 'Space') {
+    if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
       e.preventDefault();
       const m = document.getElementById(MODAL_ID);
       if (m && m.classList.contains('sfp-modal--open')) {
@@ -730,11 +771,14 @@
 
   let lastUrl = location.href;
   let _navTimer = null;
+  let isNavigating = false;
 
   function onUrlChange() {
     const cur = location.href;
     if (cur === lastUrl) return;
     lastUrl = cur;
+
+    isNavigating = true; // Block MutationObserver during SPA transition
 
     const el = document.getElementById(TOOLBAR_ID);
     if (el) el.remove();
@@ -742,7 +786,11 @@
     if (_navTimer) clearTimeout(_navTimer);
     _navTimer = setTimeout(() => {
       _navTimer = null;
-      init();
+      init().then(() => {
+        isNavigating = false; // Unblock after init finishes
+      }).catch(() => {
+        isNavigating = false;
+      });
     }, 450);
   }
 
@@ -771,6 +819,8 @@
   }
 
   const domObserver = new MutationObserver(() => {
+    if (isNavigating) return; // Ignore mutations during navigation to prevent race loops
+
     if (document.getElementById(SIDE_BTN_ID) && document.getElementById(MODAL_ID)) {
       const page = parsePage();
       if (!page && document.getElementById(TOOLBAR_ID)) {
