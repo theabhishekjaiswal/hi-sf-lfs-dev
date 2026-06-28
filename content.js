@@ -1,21 +1,14 @@
 /**
- * SF Navigator v2.3 — Content Script
+ * SF Navigator v2.4 — Content Script
  *
- * Works on ANY Salesforce page: records, list views, home, setup, etc.
- *
- * NAVIGATION STRATEGY (researched from working extensions like Switch2Classic):
- *   Direct URL rewriting is the most reliable approach — no /ltng/switcher.
- *   Lightning → Classic:  swap domain + extract record ID into Classic path
- *   Classic  → Lightning: swap domain + build /lightning/r/{type}/{id}/view
- *   Non-record pages:     swap domain on the whole URL (best-effort)
- *
- * TOOLBAR PERSISTENCE (Lightning SPA fix):
- *   Lightning's Aura/LWC framework re-renders the DOM and removes injected
- *   elements. A MutationObserver watches for the toolbar being removed and
- *   reinjec ts it automatically (debounced to avoid thrashing).
- *
- * API CALLS: background.js reads `sid` cookie → Authorization: Bearer {sid}
- *   This bypasses CORS and the INVALID_SESSION_ID error from content scripts.
+ * Fixes in this version:
+ *   1. API in Lightning — background now uses my.salesforce.com for all API calls
+ *   2. Classic → Lightning "page not found" — fallback to one/one.app URL for
+ *      records whose object type can't be resolved
+ *   3. Toolbar not visible in Lightning — MutationObserver on documentElement +
+ *      debounced URL-change handler prevent toolbar from being lost on re-renders
+ *   4. Application related records — Account / Contact / Party buttons open in
+ *      the SAME view (Lightning/Classic) as the Application is currently in
  */
 
 (function () {
@@ -28,6 +21,7 @@
   // ─── Constants ────────────────────────────────────────────────────────────
 
   const APP_OBJECT = 'genesis__Applications__c';
+  const PARTY_OBJECT = 'clcommon__Party__c';
   const TOOLBAR_ID = 'sf-navigator-root';
   const SF_ID_RE   = /^[a-zA-Z0-9]{15,18}$/;
 
@@ -67,10 +61,8 @@
   }
 
   /**
-   * Classic-compatible base URL.
-   *   *.lightning.force.com  →  *.my.salesforce.com
-   *   *.my.salesforce.com    →  unchanged
-   *   cs*.salesforce.com     →  unchanged
+   * Classic (my.salesforce.com) base URL.
+   * Works for production and sandbox orgs with My Domain.
    */
   function getClassicBase() {
     const { protocol, hostname } = window.location;
@@ -79,22 +71,19 @@
   }
 
   /**
-   * Lightning Experience base URL.
-   *   *.my.salesforce.com        →  *.lightning.force.com
-   *   *.lightning.force.com      →  unchanged
-   *
-   * Sandbox example:
-   *   myorg--uat.sandbox.my.salesforce.com  →  myorg--uat.sandbox.lightning.force.com
+   * Lightning Experience (lightning.force.com) base URL.
+   * Works for production and sandbox orgs with My Domain.
    */
   function getLightningBase() {
     const { protocol, hostname } = window.location;
     if (hostname.includes('.lightning.force.com')) return `${protocol}//${hostname}`;
     const h = hostname.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
-    // If no substitution happened (e.g. cs*.salesforce.com legacy pods), stay as-is
     return `${protocol}//${h}`;
   }
 
   // ─── Background API bridge ────────────────────────────────────────────────
+  // background.js reads the `sid` cookie from my.salesforce.com and makes all
+  // API requests there, even when the current tab is on lightning.force.com.
 
   function bgQuery(query) {
     return new Promise((resolve, reject) => {
@@ -129,21 +118,14 @@
   }
 
   /**
-   * Parse the current page URL.
+   * Parse the current URL and return page context.
    * Returns { objectType, recordId, isLightning, isRecordPage }
-   *
-   * Handles:
-   *   1. Lightning record URL:  /lightning/r/{ObjectType}/{Id}/view
-   *   2. Classic record URL:    /{Id}
-   *   3. VF / Apex page:        /apex/{PageName}?id={Id}
-   *   4. Generic ?id= param:    any page with ?id={Id}
-   *   5. Non-record page:       everything else (Classic/Lightning switch still shown)
    */
   function parsePage() {
     const { pathname, searchParams } = new URL(window.location.href);
     const onLEX = isOnLightningDomain();
 
-    // 1. Lightning record: /lightning/r/ObjectApiName/RecordId/...
+    // 1. Lightning record:  /lightning/r/{ObjectApiName}/{RecordId}/...
     const lexMatch = pathname.match(/\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})\//);
     if (lexMatch) {
       return {
@@ -154,11 +136,10 @@
       };
     }
 
-    // 2. Classic record path: /{RecordId} or /{RecordId}/e etc.
+    // 2. Classic record path:  /{RecordId} or /{RecordId}/e etc.
     const classicMatch = pathname.match(/^\/([a-zA-Z0-9]{15,18})(?:\/|$)/);
     if (classicMatch) {
       const id = classicMatch[1];
-      // Guard against known non-record path words that happen to be 15-18 chars
       if (/^(setup|lightning|apex|visualforce|servlet|secur|partners)/i.test(id)) {
         return { objectType: null, recordId: null, isLightning: false, isRecordPage: false };
       }
@@ -170,7 +151,7 @@
       };
     }
 
-    // 3. Apex / Visualforce: /apex/PageName?id=RecordId
+    // 3. Apex / Visualforce:  /apex/{PageName}?id={RecordId}
     const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
     const idParam   = searchParams.get('id');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
@@ -178,12 +159,12 @@
       return {
         objectType,
         recordId:     idParam,
-        isLightning:  onLEX,   // respect domain even on VF pages
+        isLightning:  onLEX,
         isRecordPage: true,
       };
     }
 
-    // 4. Generic ?id= fallback (any SF page with a record ID in the query string)
+    // 4. Generic ?id= fallback
     if (idParam && SF_ID_RE.test(idParam)) {
       return {
         objectType:   objectTypeFromId(idParam),
@@ -193,14 +174,15 @@
       };
     }
 
-    // 5. Non-record page: show Classic / Lightning switch buttons only
+    // 5. Non-record page
     return { objectType: null, recordId: null, isLightning: onLEX, isRecordPage: false };
   }
 
-  // ─── Object type resolver (for unknown Classic record IDs) ────────────────
+  // ─── Object type resolver ─────────────────────────────────────────────────
 
   async function resolveObjectType(recordId) {
     try {
+      // background.js will use the Classic domain + discovered API version
       const url  = `${getApiBaseUrl()}/services/data/v59.0/ui-api/records/${recordId}?fields=Id`;
       const data = await bgFetch(url);
       return (data && data.apiName) || null;
@@ -212,15 +194,8 @@
   // ─── URL builders ─────────────────────────────────────────────────────────
 
   /**
-   * Classic record URL for direct navigation (related-record buttons —
-   * Account, Contact, Party). No override params added here.
-   */
-  function classicRecordUrl(id) {
-    return `${getClassicBase()}/${id}`;
-  }
-
-  /**
-   * Current page URL with ?nooverride=1, stripping conflicting override params.
+   * No Override URL — strips sfdc.override and adds nooverride=1.
+   * ONLY used by the No Override button and Open All. Never called elsewhere.
    */
   function noOverrideUrl() {
     const url = new URL(window.location.href);
@@ -231,73 +206,75 @@
   }
 
   /**
-   * Build the "Switch to Classic" URL — DIRECT URL rewriting (most reliable).
-   *
-   * Pattern (used by Switch2Classic and proven working extensions):
-   *   Record page:  swap domain to Classic base + /{recordId}?nooverride=1
-   *   Other page:   swap domain on entire URL (best-effort)
-   *
-   * We do NOT use /ltng/switcher because:
-   *   - It's an undocumented internal endpoint
-   *   - Fails on Lightning-only orgs / certain configurations
-   *   - Can cause redirect loops
+   * "Switch to Classic" — DIRECT domain swap (most reliable).
+   * Record page: swap domain → /{id}  (plain Classic URL)
+   * Non-record:  swap domain or land on Classic home
    */
   function switchToClassicUrl(page) {
     const classicBase = getClassicBase();
 
     if (page && page.isRecordPage && page.recordId) {
-      // Direct Classic record URL — plain, no override params
       return `${classicBase}/${page.recordId}`;
     }
 
-    // Non-record page: rewrite domain, keep path + search
     if (isOnLightningDomain()) {
-      // Try to map /lightning/o/{object}/list → /{object} (Classic list view)
+      // List view: /lightning/o/{Object}/list → /{Object}
       const listMatch = window.location.pathname.match(/\/lightning\/o\/([^/]+)\/list/);
-      if (listMatch) {
-        return `${classicBase}/${listMatch[1]}`;
-      }
+      if (listMatch) return `${classicBase}/${listMatch[1]}`;
       return `${classicBase}/home/home.jsp`;
     }
 
-    // Already on Classic domain — return as-is (no override manipulation)
     return `${classicBase}${window.location.pathname}${window.location.search}`;
   }
 
   /**
-   * Build the "Switch to Lightning" URL — DIRECT URL rewriting (most reliable).
+   * "Switch to Lightning" — DIRECT domain swap (most reliable).
    *
-   * Record page:  build /lightning/r/{objectType}/{recordId}/view
-   * Other page:   swap domain, or fall back to Lightning home
-   *
-   * For records with unknown object type, Salesforce resolves it automatically
-   * via /lightning/r/{recordId}/view (no object type needed — SF redirects).
+   * Record with known type:   /lightning/r/{type}/{id}/view
+   * Record with unknown type: one/one.app#/sObject/{id}/view
+   *   (Salesforce auto-resolves the record type from ID in this older URL format)
+   * Non-record Classic page:  domain swap on current URL
    */
   function switchToLightningUrl(page) {
     const lightningBase = getLightningBase();
 
     if (page && page.isRecordPage && page.recordId) {
       if (page.objectType) {
-        // Full Lightning record URL with known type
         return `${lightningBase}/lightning/r/${page.objectType}/${page.recordId}/view`;
       }
-      // SF resolves the record ID to the correct object type automatically
-      return `${lightningBase}/lightning/r/${page.recordId}/view`;
+      // Unknown type — use the sObject URL which works without knowing the type
+      return `${lightningBase}/one/one.app#/sObject/${page.recordId}/view`;
     }
 
-    // Non-record page: rewrite domain on current path
     if (!isOnLightningDomain()) {
-      // Try to convert Classic list/tab URL to Lightning equivalent
       const url = new URL(window.location.href);
       url.hostname = url.hostname.replace(/\.my\.salesforce\.com$/, '.lightning.force.com');
-      // Strip Classic-only params
       url.searchParams.delete('nooverride');
       url.searchParams.delete('sfdc.override');
       return url.toString();
     }
 
-    // Already on Lightning
     return window.location.href;
+  }
+
+  /**
+   * Build a URL to open a related record (Account / Contact / Party)
+   * in the SAME view (Lightning or Classic) as the current Application page.
+   *
+   * @param {string}  id          — Salesforce record ID
+   * @param {boolean} inLightning — true if Application is in Lightning view
+   * @param {string}  [objectType] — known object API name (e.g. 'Account')
+   */
+  function relatedRecordUrl(id, inLightning, objectType) {
+    if (!id) return null;
+    if (inLightning) {
+      if (objectType) {
+        return `${getLightningBase()}/lightning/r/${objectType}/${id}/view`;
+      }
+      // Fallback: one.app resolves type from ID
+      return `${getLightningBase()}/one/one.app#/sObject/${id}/view`;
+    }
+    return `${getClassicBase()}/${id}`;
   }
 
   // ─── Application data fetcher ─────────────────────────────────────────────
@@ -398,8 +375,8 @@
     logo.innerHTML = `<div class="sfn-logo-icon">${ICONS.logo}</div><span class="sfn-logo-text">SF Nav</span>`;
     toolbar.appendChild(logo);
 
-    // Classic
-    const classicBtn = makeButton({
+    // Classic button
+    toolbar.appendChild(makeButton({
       id:      'classic',
       icon:    ICONS.classic,
       label:   'Classic',
@@ -407,11 +384,10 @@
       variant: 'classic',
       active:  !onLEX,
       onClick: () => window.open(switchToClassicUrl(page), '_blank'),
-    });
-    toolbar.appendChild(classicBtn);
+    }));
 
-    // Lightning
-    const lightningBtn = makeButton({
+    // Lightning button
+    toolbar.appendChild(makeButton({
       id:      'lightning',
       icon:    ICONS.lightning,
       label:   'Lightning',
@@ -419,61 +395,67 @@
       variant: 'lightning',
       active:  onLEX,
       onClick: () => window.open(switchToLightningUrl(page), '_blank'),
-    });
-    toolbar.appendChild(lightningBtn);
+    }));
 
-    // App-specific section
+    // ── Application-specific section ─────────────────────────────────────────
     if (isApp) {
       toolbar.appendChild(createDivider());
 
-      const noOvrBtn = makeButton({
+      // No Override — always on current page URL, both views
+      toolbar.appendChild(makeButton({
         id:      'nooverride',
         icon:    ICONS.nooverride,
         label:   'No Override',
         tooltip: 'Open with ?nooverride=1 (bypasses Visualforce page override)',
         variant: 'nooverride',
         onClick: () => window.open(noOverrideUrl(), '_blank'),
-      });
-      toolbar.appendChild(noOvrBtn);
+      }));
 
+      // Account — opens in SAME view as current Application
       const accountBtn = makeButton({
         id:      'account',
         icon:    ICONS.account,
         label:   'Account',
-        tooltip: 'Open related Account in Classic',
+        tooltip: `Open related Account in ${onLEX ? 'Lightning' : 'Classic'}`,
         variant: 'account',
         onClick: () => {
-          if (appData && appData.accountId) window.open(classicRecordUrl(appData.accountId), '_blank');
+          const url = relatedRecordUrl(appData && appData.accountId, onLEX, 'Account');
+          if (url) window.open(url, '_blank');
         },
       });
       toolbar.appendChild(accountBtn);
 
+      // Contact — opens in SAME view as current Application
       const contactBtn = makeButton({
         id:      'contact',
         icon:    ICONS.contact,
         label:   'Contact',
-        tooltip: 'Open related Contact in Classic',
+        tooltip: `Open related Contact in ${onLEX ? 'Lightning' : 'Classic'}`,
         variant: 'contact',
         onClick: () => {
-          if (appData && appData.contactId) window.open(classicRecordUrl(appData.contactId), '_blank');
+          const url = relatedRecordUrl(appData && appData.contactId, onLEX, 'Contact');
+          if (url) window.open(url, '_blank');
         },
       });
       toolbar.appendChild(contactBtn);
 
+      // Party — opens in SAME view; object type is always clcommon__Party__c
       const partyBtn = makeButton({
         id:      'party',
         icon:    ICONS.party,
         label:   'Party',
-        tooltip: 'Open related Party in Classic',
+        tooltip: `Open related Party in ${onLEX ? 'Lightning' : 'Classic'}`,
         variant: 'party',
         onClick: () => {
-          if (appData && appData.partyId) window.open(classicRecordUrl(appData.partyId), '_blank');
+          const url = relatedRecordUrl(appData && appData.partyId, onLEX, PARTY_OBJECT);
+          if (url) window.open(url, '_blank');
         },
       });
       toolbar.appendChild(partyBtn);
 
       toolbar.appendChild(createDivider());
 
+      // Open All — opens No Override + related records, respecting current view
       const openAllBtn = makeButton({
         id:      'openall',
         icon:    ICONS.openall,
@@ -482,9 +464,12 @@
         variant: 'openall',
         onClick: () => {
           window.open(noOverrideUrl(), '_blank');
-          if (appData && appData.accountId) window.open(classicRecordUrl(appData.accountId), '_blank');
-          if (appData && appData.contactId) window.open(classicRecordUrl(appData.contactId), '_blank');
-          if (appData && appData.partyId)   window.open(classicRecordUrl(appData.partyId),   '_blank');
+          const acc = relatedRecordUrl(appData && appData.accountId, onLEX, 'Account');
+          const con = relatedRecordUrl(appData && appData.contactId, onLEX, 'Contact');
+          const pty = relatedRecordUrl(appData && appData.partyId, onLEX, PARTY_OBJECT);
+          if (acc) window.open(acc, '_blank');
+          if (con) window.open(con, '_blank');
+          if (pty) window.open(pty, '_blank');
         },
       });
       toolbar.appendChild(openAllBtn);
@@ -496,6 +481,7 @@
       dot.title     = isLoading ? 'Loading related records…' : 'Records loaded';
       toolbar.appendChild(dot);
 
+      // Apply loading / disabled states
       if (isLoading) {
         [accountBtn, contactBtn, partyBtn, openAllBtn].forEach((b) => setLoading(b, true));
       } else {
@@ -531,7 +517,7 @@
 
     const page = parsePage();
 
-    // Resolve object type for Classic pages with unknown prefix
+    // Resolve object type for Classic records with unknown prefix
     if (page && page.isRecordPage && page.recordId && !page.objectType) {
       page.objectType = await resolveObjectType(page.recordId);
     }
@@ -539,6 +525,7 @@
     const isApp = page && page.objectType === APP_OBJECT;
 
     if (isApp) {
+      // Show immediately with spinners on data-dependent buttons
       document.body.appendChild(buildToolbar(page, null, true));
       const appData = await fetchAppData(page.recordId);
       const old = document.getElementById(TOOLBAR_ID);
@@ -549,18 +536,28 @@
     }
   }
 
-  // ─── SPA URL change detection ─────────────────────────────────────────────
+  // ─── SPA / Lightning navigation ───────────────────────────────────────────
+  // Lightning fires many pushState events per navigation. Debounce so we only
+  // call init() ONCE after the URL has settled.
 
-  let lastUrl = location.href;
+  let lastUrl        = location.href;
+  let _navTimer      = null;
 
   function onUrlChange() {
     const cur = location.href;
     if (cur === lastUrl) return;
     lastUrl = cur;
+
+    // Remove existing toolbar immediately on navigation
     const el = document.getElementById(TOOLBAR_ID);
     if (el) el.remove();
-    // Longer delay on Lightning — the SPA needs time to settle the DOM
-    setTimeout(init, 600);
+
+    // Debounced re-init — wait for Lightning DOM to settle
+    if (_navTimer) clearTimeout(_navTimer);
+    _navTimer = setTimeout(() => {
+      _navTimer = null;
+      init();
+    }, 700);
   }
 
   ['pushState', 'replaceState'].forEach((method) => {
@@ -573,10 +570,10 @@
 
   window.addEventListener('popstate', onUrlChange);
 
-  // ─── MutationObserver: reinject if Lightning removes the toolbar ───────────
-  // Lightning's Aura/LWC framework re-renders the DOM, which removes injected
-  // elements. We watch direct children of <body> and reinject if our toolbar
-  // disappears, debounced to avoid thrashing during rapid renders.
+  // ─── MutationObserver: survive Lightning DOM re-renders ───────────────────
+  // Lightning's Aura/LWC framework can silently replace body children during
+  // component re-renders. Watch for our toolbar being removed and reinject.
+  // Observing document.documentElement covers both body and html-level changes.
 
   let _reinjectTimer = null;
 
@@ -584,15 +581,15 @@
     if (_reinjectTimer) return;
     _reinjectTimer = setTimeout(() => {
       _reinjectTimer = null;
-      // Only reinject if URL hasn't changed (not a navigation event)
+      // Only reinject if we're still on the same URL (not a navigation event)
       if (!document.getElementById(TOOLBAR_ID) && location.href === lastUrl) {
         init();
       }
-    }, 500);
+    }, 600);
   }
 
-  const bodyObserver = new MutationObserver((mutations) => {
-    // Only act on removal of direct body children (not subtree noise)
+  const domObserver = new MutationObserver((mutations) => {
+    if (document.getElementById(TOOLBAR_ID)) return; // still there, ignore
     for (const m of mutations) {
       for (const node of m.removedNodes) {
         if (node.id === TOOLBAR_ID) {
@@ -603,28 +600,25 @@
     }
   });
 
-  // Start observing once body is available
-  function startObserver() {
+  // Observe document.documentElement so we survive even full body replacements
+  domObserver.observe(document.documentElement, { childList: true, subtree: false });
+
+  // Also observe body once it exists (catches direct body-child removals)
+  function observeBody() {
     if (document.body) {
-      bodyObserver.observe(document.body, { childList: true });
-    } else {
-      // body not yet available — wait for it
-      new MutationObserver((_, obs) => {
-        if (document.body) {
-          obs.disconnect();
-          bodyObserver.observe(document.body, { childList: true });
-        }
-      }).observe(document.documentElement, { childList: true });
+      domObserver.observe(document.body, { childList: true });
     }
   }
 
   // ─── Boot ─────────────────────────────────────────────────────────────────
 
-  startObserver();
-
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+      observeBody();
+      init();
+    });
   } else {
+    observeBody();
     init();
   }
 
