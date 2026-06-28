@@ -1,5 +1,5 @@
 /**
- * SF Navigator v3.0 — Content Script
+ * SF Pilot v4.0.0 — Content Script
  *
  * Simpler, Faster, Record-Only Navigation:
  *   - Only runs and displays on Salesforce record pages.
@@ -321,7 +321,7 @@
     // Logo
     const logo = document.createElement('div');
     logo.className = 'sfn-logo';
-    logo.innerHTML = `<div class="sfn-logo-icon">${ICONS.logo}</div><span class="sfn-logo-text">SF Nav</span>`;
+    logo.innerHTML = `<div class="sfn-logo-icon">${ICONS.logo}</div><span class="sfn-logo-text">SF Pilot</span>`;
     toolbar.appendChild(logo);
 
     // Classic button
