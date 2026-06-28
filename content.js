@@ -689,12 +689,21 @@
     if (obj) {
       if (obj.type === 'Object') {
         if (obj.custom) {
-          // Custom Object Setup definition page (using 15-character ID)
+          const nameLower = objectName.toLowerCase();
+          const isMetadataType = nameLower.endsWith('__mdt');
           if (obj.setupId) {
             const setupId15 = obj.setupId.substring(0, 15);
-            destination = `${setupId15}?setupid=CustomObjects`;
+            if (isMetadataType) {
+              destination = `${setupId15}?setupid=CustomMetadata`;
+            } else {
+              destination = `${setupId15}?setupid=CustomObjects`;
+            }
           } else {
-            destination = `setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
+            if (isMetadataType) {
+              destination = `01I?setupid=CustomMetadata`;
+            } else {
+              destination = `01I?setupid=CustomObjects`;
+            }
           }
         } else {
           // Standard Object fields setup page
@@ -713,7 +722,14 @@
         destination = obj.setupId;
       }
     } else {
-      destination = `setup/layout/LayoutFieldList?type=${objectName}`;
+      const nameLower = objectName.toLowerCase();
+      if (nameLower.endsWith('__mdt')) {
+        destination = `01I?setupid=CustomMetadata`;
+      } else if (nameLower.endsWith('__c')) {
+        destination = `01I?setupid=CustomObjects`;
+      } else {
+        destination = `setup/layout/LayoutFieldList?type=${objectName}`;
+      }
     }
 
     const url = `${getClassicBase()}/${destination}`;

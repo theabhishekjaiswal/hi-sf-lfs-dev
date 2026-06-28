@@ -62,7 +62,7 @@ async function handleGetObjects(msg, sender) {
   // 1. Tooling API query for CustomObject 01I Setup IDs (Parallel)
   const toolingPromise = (async () => {
     try {
-      const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject+WHERE+NamespacePrefix=null`;
+      const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject`;
       const qResp = await fetch(customQueryUrl, { headers, signal: controller.signal });
       if (qResp.ok) {
         const qData = await qResp.json();
@@ -195,7 +195,10 @@ async function handleGetObjects(msg, sender) {
     // Add sObjects (filter out Custom Settings to avoid double listing)
     if (data && Array.isArray(data.sobjects)) {
       const sobjects = data.sobjects
-        .filter(o => o.queryable && o.layoutable && !customSettingsNames.has(o.name.toLowerCase()))
+        .filter(o => {
+          const nameLower = o.name.toLowerCase();
+          return o.queryable && (o.layoutable || nameLower.endsWith('__mdt')) && !customSettingsNames.has(nameLower);
+        })
         .map(o => {
           let setupId = null;
           if (o.custom) {
