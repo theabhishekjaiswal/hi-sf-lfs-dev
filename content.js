@@ -1,5 +1,5 @@
 /**
- * SF Navigator v2.5 — Content Script
+ * SF Navigator v2.6 — Content Script
  *
  * Fixes in this version:
  *   1. API in Lightning — background now uses my.salesforce.com for all API calls
@@ -125,6 +125,12 @@
     const { pathname, searchParams } = new URL(window.location.href);
     const onLEX = isOnLightningDomain();
 
+    const pLower = pathname.toLowerCase();
+    const isSetup = pLower.includes('/setup') ||
+      pLower.includes('setuponehome') ||
+      pLower.includes('objectmanager') ||
+      /^\/(setup|p\/setup|ui\/setup)/i.test(pathname);
+
     // 1. Lightning record:  /lightning/r/{ObjectApiName}/{RecordId}/...
     const lexMatch = pathname.match(/\/lightning\/r\/([^/]+)\/([a-zA-Z0-9]{15,18})\//);
     if (lexMatch) {
@@ -133,6 +139,7 @@
         recordId: lexMatch[2],
         isLightning: true,
         isRecordPage: true,
+        isSetupPage: isSetup,
       };
     }
 
@@ -141,13 +148,20 @@
     if (classicMatch) {
       const id = classicMatch[1];
       if (/^(setup|lightning|apex|visualforce|servlet|secur|partners)/i.test(id)) {
-        return { objectType: null, recordId: null, isLightning: false, isRecordPage: false };
+        return { objectType: null, recordId: null, isLightning: false, isRecordPage: false, isSetupPage: true };
       }
+
+      // Check for Setup/Metadata ID prefixes (e.g. 01I is CustomObject, etc.)
+      if (/^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(id)) {
+        return { objectType: null, recordId: id, isLightning: false, isRecordPage: false, isSetupPage: true };
+      }
+
       return {
         objectType: objectTypeFromId(id),
         recordId: id,
         isLightning: false,
         isRecordPage: true,
+        isSetupPage: isSetup,
       };
     }
 
@@ -161,6 +175,7 @@
         recordId: idParam,
         isLightning: onLEX,
         isRecordPage: true,
+        isSetupPage: isSetup || /^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam),
       };
     }
 
@@ -171,11 +186,12 @@
         recordId: idParam,
         isLightning: onLEX,
         isRecordPage: true,
+        isSetupPage: isSetup || /^(01I|01M|01p|01q|01s|01u|0A2|0to|04G|02a)/.test(idParam),
       };
     }
 
     // 5. Non-record page
-    return { objectType: null, recordId: null, isLightning: onLEX, isRecordPage: false };
+    return { objectType: null, recordId: null, isLightning: onLEX, isRecordPage: false, isSetupPage: isSetup };
   }
 
   // ─── Object type resolver ─────────────────────────────────────────────────
@@ -213,13 +229,26 @@
   function switchToClassicUrl(page) {
     const classicBase = getClassicBase();
 
+    // Setup pages / metadata IDs
+    if (page && page.isSetupPage) {
+      return `${classicBase}/setup/forcecomHomepage.apexp`;
+    }
+
     if (page && page.isRecordPage && page.recordId) {
       return `${classicBase}/${page.recordId}`;
     }
 
     if (isOnLightningDomain()) {
+      const path = window.location.pathname;
+      const pLower = path.toLowerCase();
+
+      // If we are in Lightning Setup
+      if (pLower.includes('/setup') || pLower.includes('setuponehome') || pLower.includes('objectmanager')) {
+        return `${classicBase}/setup/forcecomHomepage.apexp`;
+      }
+
       // List view: /lightning/o/{Object}/list → /{Object}
-      const listMatch = window.location.pathname.match(/\/lightning\/o\/([^/]+)\/list/);
+      const listMatch = path.match(/\/lightning\/o\/([^/]+)\/list/);
       if (listMatch) return `${classicBase}/${listMatch[1]}`;
       return `${classicBase}/home/home.jsp`;
     }
@@ -234,8 +263,41 @@
    */
   function switchToLightningUrl(page) {
     const lightningBase = getLightningBase();
+    const path = window.location.pathname;
 
-    // Record page
+    // 1. Classic Object Manager / metadata pages → Lightning Object Manager
+    if (/\/(CustomObjectFieldsPage|CustomEntityPage|LayoutFieldList|CustomObjectPage|RelatedList|PageLayouts)/i.test(path)) {
+      return `${lightningBase}/lightning/setup/ObjectManager/home`;
+    }
+
+    // 2. Setup pages / metadata IDs from Classic
+    if (page && page.isSetupPage) {
+      if (page.recordId) {
+        const prefix = page.recordId.substring(0, 3);
+        if (prefix === '01I') {
+          // Custom Object Definition -> Lightning Object Manager
+          return `${lightningBase}/lightning/setup/ObjectManager/home`;
+        }
+        if (prefix === '01p') {
+          return `${lightningBase}/lightning/setup/ApexClasses/home`;
+        }
+        if (prefix === '01q') {
+          return `${lightningBase}/lightning/setup/ApexTriggers/home`;
+        }
+        if (prefix === '01s') {
+          return `${lightningBase}/lightning/setup/ApexPages/home`;
+        }
+        if (prefix === '01u') {
+          return `${lightningBase}/lightning/setup/ApexComponents/home`;
+        }
+        if (prefix === '0A2') {
+          return `${lightningBase}/lightning/setup/LightningComponentBundles/home`;
+        }
+      }
+      return `${lightningBase}/lightning/setup/SetupOneHome/home`;
+    }
+
+    // 3. Record page
     if (page && page.isRecordPage && page.recordId) {
       if (page.objectType) {
         return `${lightningBase}/lightning/r/${page.objectType}/${page.recordId}/view`;
@@ -245,13 +307,6 @@
     }
 
     if (!isOnLightningDomain()) {
-      const path = window.location.pathname;
-
-      // Classic Object Manager / metadata pages → Lightning Object Manager
-      if (/\/(CustomObjectFieldsPage|CustomEntityPage|LayoutFieldList|CustomObjectPage|RelatedList|PageLayouts)/i.test(path)) {
-        return `${lightningBase}/lightning/setup/ObjectManager/home`;
-      }
-
       // Any Classic Setup page → Lightning Setup home
       if (/^\/(setup|p\/setup|ui\/setup)/i.test(path)) {
         return `${lightningBase}/lightning/setup/SetupOneHome/home`;
@@ -336,13 +391,17 @@
 
   // ─── DOM utilities ────────────────────────────────────────────────────────
 
-  function makeButton({ id, icon, label, tooltip, variant, active, onClick }) {
+  function makeButton({ id, icon, label, tooltip, variant, active, disabled, onClick }) {
     const btn = document.createElement('button');
     btn.id = `sfn-btn-${id}`;
     btn.className = `sfn-btn sfn-btn--${variant}${active ? ' sfn-btn--active' : ''}`;
     btn.setAttribute('data-tooltip', tooltip);
     btn.innerHTML = `<span class="sfn-btn-icon">${icon}</span><span class="sfn-btn-label">${label}</span>`;
-    btn.addEventListener('click', onClick);
+    if (disabled) {
+      btn.disabled = true;
+    } else {
+      btn.addEventListener('click', onClick);
+    }
     return btn;
   }
 
@@ -393,7 +452,8 @@
       label: 'Classic',
       tooltip: onLEX ? 'Open in Salesforce Classic' : 'Currently in Classic view',
       variant: 'classic',
-      active: !onLEX,
+      active: false,
+      disabled: !onLEX,
       onClick: () => window.open(switchToClassicUrl(page), '_blank'),
     }));
 
@@ -404,7 +464,8 @@
       label: 'Lightning',
       tooltip: !onLEX ? 'Open in Lightning Experience' : 'Currently in Lightning view',
       variant: 'lightning',
-      active: onLEX,
+      active: false,
+      disabled: onLEX,
       onClick: () => window.open(switchToLightningUrl(page), '_blank'),
     }));
 
@@ -603,10 +664,10 @@
 
   window.addEventListener('popstate', onUrlChange);
 
-  // ─── MutationObserver: survive Lightning DOM re-renders ───────────────────
-  // Lightning's Aura/LWC framework can silently replace body children during
-  // component re-renders. Watch for our toolbar being removed and reinject.
-  // Observing document.documentElement covers both body and html-level changes.
+  // ─── MutationObserver: survive Lightning Setup/DOM re-renders ──────────────
+  // Watch for our toolbar being removed and reinject it.
+  // Observing document.documentElement recursively with subtree:true ensures
+  // we catch changes even if body is fully replaced or deeply mutated.
 
   let _reinjectTimer = null;
 
@@ -618,34 +679,27 @@
       if (!document.getElementById(TOOLBAR_ID) && location.href === lastUrl) {
         init();
       }
-    }, 600);
+    }, 300); // Snappy 300ms reinjection
   }
 
+  let _lastCheck = 0;
   const domObserver = new MutationObserver(() => {
-    if (document.getElementById(TOOLBAR_ID)) return; // still there
+    const now = Date.now();
+    if (now - _lastCheck < 150) return; // rate-limit to 150ms to prevent any page lag
+    _lastCheck = now;
+
+    if (document.getElementById(TOOLBAR_ID)) return; // still in DOM
     scheduleReinject();
   });
 
-  // Observe html element (catches body replacement) + body with subtree:true
-  // so we detect when Lightning Setup pages do deep DOM replacements.
-  domObserver.observe(document.documentElement, { childList: true });
-
-  function observeBody() {
-    if (document.body) {
-      // subtree:true catches Lightning Setup's deep DOM re-renders
-      domObserver.observe(document.body, { childList: true, subtree: true });
-    }
-  }
+  // Observe the entire document tree recursively (body replacement + inside mutations)
+  domObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   // ─── Boot ─────────────────────────────────────────────────────────────────
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      observeBody();
-      init();
-    });
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    observeBody();
     init();
   }
 

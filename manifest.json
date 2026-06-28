@@ -1,9 +1,12 @@
 {
   "manifest_version": 3,
   "name": "SF Navigator",
-  "version": "2.2.0",
+  "version": "2.6.0",
   "description": "Premium Salesforce navigation toolbar — switch views, open related records instantly.",
-  "permissions": ["scripting", "cookies"],
+  "permissions": [
+    "scripting",
+    "cookies"
+  ],
   "host_permissions": [
     "https://*.salesforce.com/*",
     "https://*.force.com/*",
@@ -21,8 +24,12 @@
         "https://*.lightning.force.com/*",
         "https://*.my.salesforce.com/*"
       ],
-      "js": ["content.js"],
-      "css": ["toolbar.css"],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "toolbar.css"
+      ],
       "run_at": "document_idle"
     }
   ],
