@@ -96,13 +96,11 @@ async function handleGetObjects(msg, sender) {
   // 3. Fetch Apex Classes (Parallel)
   const classesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,NamespacePrefix+FROM+ApexClass`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
-        return (d.records || [])
-          .filter(r => !r.NamespacePrefix)
-          .map(r => ({ label: r.Name, name: r.Name, type: 'Class', setupId: r.Id }));
+        return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Class', setupId: r.Id }));
       }
     } catch (e) {
       console.warn('[SF Pilot] ApexClass fetch failed:', e.message);
@@ -113,13 +111,11 @@ async function handleGetObjects(msg, sender) {
   // 4. Fetch Apex Triggers (Parallel)
   const triggersPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,NamespacePrefix+FROM+ApexTrigger`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
-        return (d.records || [])
-          .filter(r => !r.NamespacePrefix)
-          .map(r => ({ label: r.Name, name: r.Name, type: 'Trigger', setupId: r.Id }));
+        return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Trigger', setupId: r.Id }));
       }
     } catch (e) {
       console.warn('[SF Pilot] ApexTrigger fetch failed:', e.message);
@@ -130,13 +126,11 @@ async function handleGetObjects(msg, sender) {
   // 5. Fetch Visualforce Pages (Parallel)
   const pagesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name,NamespacePrefix+FROM+ApexPage`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
-        return (d.records || [])
-          .filter(r => !r.NamespacePrefix)
-          .map(r => ({ label: r.Name, name: r.Name, type: 'Page', setupId: r.Id }));
+        return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Page', setupId: r.Id }));
       }
     } catch (e) {
       console.warn('[SF Pilot] ApexPage fetch failed:', e.message);
