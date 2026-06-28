@@ -59,22 +59,19 @@ async function handleGetObjects(msg, sender) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2200); // 2.2s total timeout
 
-  // 1. Tooling API query for CustomObject 01I Setup IDs (Parallel)
+  // 1. Fetch Custom Object Setup IDs from EntityDefinition (Parallel)
   const toolingPromise = (async () => {
     try {
-      const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject+WHERE+NamespacePrefix=null`;
-      const qResp = await fetch(customQueryUrl, { headers, signal: controller.signal });
+      const queryUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+DurableId,QualifiedApiName+FROM+EntityDefinition+WHERE+IsCustomSetting=false`;
+      const qResp = await fetch(queryUrl, { headers, signal: controller.signal });
       if (qResp.ok) {
         const qData = await qResp.json();
         if (qData && Array.isArray(qData.records)) {
           for (const r of qData.records) {
-            const ns = r.NamespacePrefix ? `${r.NamespacePrefix}__` : '';
-            const devName = r.DeveloperName || '';
-            const baseApiName = ns + devName;
-
-            // Map both standard custom objects (__c) and custom metadata (__mdt) in lowercase
-            customObjectIds.set((baseApiName + '__c').toLowerCase(), r.Id);
-            customObjectIds.set((baseApiName + '__mdt').toLowerCase(), r.Id);
+            const apiName = (r.QualifiedApiName || '').toLowerCase();
+            if (apiName.endsWith('__c') || apiName.endsWith('__mdt')) {
+              customObjectIds.set(apiName, r.DurableId);
+            }
           }
         }
       }

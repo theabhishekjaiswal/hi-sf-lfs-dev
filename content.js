@@ -694,6 +694,7 @@
             const setupId15 = obj.setupId.substring(0, 15);
             destination = `${setupId15}?setupid=CustomObjects`;
           } else {
+            // Classic Setup custom object fields fallback
             destination = `p/setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
           }
         } else {
