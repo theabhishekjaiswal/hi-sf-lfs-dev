@@ -24,7 +24,7 @@
 
   const APP_OBJECT = 'genesis__Applications__c';
   const TOOLBAR_ID = 'sf-navigator-root';
-  const SF_ID_RE   = /^[a-zA-Z0-9]{15,18}$/;
+  const SF_ID_RE = /^[a-zA-Z0-9]{15,18}$/;
 
   // ─── Key prefix → object type (Classic record ID detection) ──────────────
 
@@ -43,11 +43,11 @@
   // ─── VF page name → SObject type ─────────────────────────────────────────
 
   const VF_PAGE_MAP = {
-    'applicationdetails':  APP_OBJECT,
+    'applicationdetails': APP_OBJECT,
     'application_details': APP_OBJECT,
-    'applicationdetail':   APP_OBJECT,
-    'genesisapplication':  APP_OBJECT,
-    'applicationform':     APP_OBJECT,
+    'applicationdetail': APP_OBJECT,
+    'genesisapplication': APP_OBJECT,
+    'applicationform': APP_OBJECT,
   };
 
   // ─── Domain helpers ───────────────────────────────────────────────────────
@@ -145,7 +145,7 @@
 
     // 3. Apex / Visualforce: /apex/PageName?id=RecordId
     const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
-    const idParam   = searchParams.get('id');
+    const idParam = searchParams.get('id');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
       const objectType = VF_PAGE_MAP[apexMatch[1].toLowerCase()] || null;
       return { objectType, recordId: idParam, isLightning: false, isRecordPage: true };
@@ -165,7 +165,7 @@
   async function resolveObjectType(recordId) {
     try {
       // Ask background to hit the UI API — it has the session cookie
-      const url  = `${getApiBaseUrl()}/services/data/v59.0/ui-api/records/${recordId}?fields=Id`;
+      const url = `${getApiBaseUrl()}/services/data/v59.0/ui-api/records/${recordId}?fields=Id`;
       const data = await bgFetch(url);
       return (data && data.apiName) || null;
     } catch {
@@ -180,7 +180,7 @@
    * open in Classic, not for the "switch view" buttons).
    */
   function classicRecordUrl(id) {
-    return `${getClassicBase()}/${id}?nooverride=1`;
+    return `${getClassicBase()}/${id}`;
   }
 
   /**
@@ -210,7 +210,7 @@
     let retUrl;
     if (page && page.isRecordPage && page.recordId) {
       // Land on the specific record in Classic (with nooverride)
-      retUrl = `/${page.recordId}?nooverride=1`;
+      retUrl = `/${page.recordId}`;
     } else {
       // Non-record page: try to land on the equivalent Classic path
       retUrl = window.location.pathname + window.location.search;
@@ -227,7 +227,7 @@
    * The referrer is the Lightning URL to land on.
    */
   function switchToLightningUrl(page) {
-    const classicBase   = getClassicBase();
+    const classicBase = getClassicBase();
     const lightningBase = getLightningBase();
 
     let retUrl;
@@ -287,22 +287,22 @@
   // ─── SVG Icons ────────────────────────────────────────────────────────────
 
   const ICONS = {
-    classic:    `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
-    lightning:  `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+    classic: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
+    lightning: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
     nooverride: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>`,
-    account:    `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
-    contact:    `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-    party:      `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-    openall:    `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`,
-    logo:       `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>`,
-    spinner:    `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`,
+    account: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    contact: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    party: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    openall: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`,
+    logo: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>`,
+    spinner: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`,
   };
 
   // ─── DOM utilities ────────────────────────────────────────────────────────
 
   function makeButton({ id, icon, label, tooltip, variant, active, onClick }) {
     const btn = document.createElement('button');
-    btn.id        = `sfn-btn-${id}`;
+    btn.id = `sfn-btn-${id}`;
     btn.className = `sfn-btn sfn-btn--${variant}${active ? ' sfn-btn--active' : ''}`;
     btn.setAttribute('data-tooltip', tooltip);
     btn.innerHTML = `<span class="sfn-btn-icon">${icon}</span><span class="sfn-btn-label">${label}</span>`;
@@ -352,24 +352,24 @@
 
     // ── Classic ───────────────────────────────────────────────────────────────
     const classicBtn = makeButton({
-      id:      'classic',
-      icon:    ICONS.classic,
-      label:   'Classic',
+      id: 'classic',
+      icon: ICONS.classic,
+      label: 'Classic',
       tooltip: onLEX ? 'Switch to Salesforce Classic' : 'Currently in Classic view',
       variant: 'classic',
-      active:  !onLEX,
+      active: !onLEX,
       onClick: () => window.open(switchToClassicUrl(page), '_blank'),
     });
     toolbar.appendChild(classicBtn);
 
     // ── Lightning ─────────────────────────────────────────────────────────────
     const lightningBtn = makeButton({
-      id:      'lightning',
-      icon:    ICONS.lightning,
-      label:   'Lightning',
+      id: 'lightning',
+      icon: ICONS.lightning,
+      label: 'Lightning',
       tooltip: !onLEX ? 'Switch to Lightning Experience' : 'Currently in Lightning view',
       variant: 'lightning',
-      active:  onLEX,
+      active: onLEX,
       onClick: () => window.open(switchToLightningUrl(page), '_blank'),
     });
     toolbar.appendChild(lightningBtn);
@@ -380,9 +380,9 @@
 
       // No Override
       const noOvrBtn = makeButton({
-        id:      'nooverride',
-        icon:    ICONS.nooverride,
-        label:   'No Override',
+        id: 'nooverride',
+        icon: ICONS.nooverride,
+        label: 'No Override',
         tooltip: 'Open with ?nooverride=1 (bypasses Visualforce page override)',
         variant: 'nooverride',
         onClick: () => window.open(noOverrideUrl(), '_blank'),
@@ -391,9 +391,9 @@
 
       // Account
       const accountBtn = makeButton({
-        id:      'account',
-        icon:    ICONS.account,
-        label:   'Account',
+        id: 'account',
+        icon: ICONS.account,
+        label: 'Account',
         tooltip: 'Open related Account in Classic',
         variant: 'account',
         onClick: () => {
@@ -404,9 +404,9 @@
 
       // Contact
       const contactBtn = makeButton({
-        id:      'contact',
-        icon:    ICONS.contact,
-        label:   'Contact',
+        id: 'contact',
+        icon: ICONS.contact,
+        label: 'Contact',
         tooltip: 'Open related Contact in Classic',
         variant: 'contact',
         onClick: () => {
@@ -417,9 +417,9 @@
 
       // Party
       const partyBtn = makeButton({
-        id:      'party',
-        icon:    ICONS.party,
-        label:   'Party',
+        id: 'party',
+        icon: ICONS.party,
+        label: 'Party',
         tooltip: 'Open related Party in Classic',
         variant: 'party',
         onClick: () => {
@@ -432,25 +432,25 @@
 
       // Open All
       const openAllBtn = makeButton({
-        id:      'openall',
-        icon:    ICONS.openall,
-        label:   'Open All',
+        id: 'openall',
+        icon: ICONS.openall,
+        label: 'Open All',
         tooltip: 'Open No Override + Account + Contact + Party in new tabs',
         variant: 'openall',
         onClick: () => {
           window.open(noOverrideUrl(), '_blank');
           if (appData && appData.accountId) window.open(classicRecordUrl(appData.accountId), '_blank');
           if (appData && appData.contactId) window.open(classicRecordUrl(appData.contactId), '_blank');
-          if (appData && appData.partyId)   window.open(classicRecordUrl(appData.partyId),   '_blank');
+          if (appData && appData.partyId) window.open(classicRecordUrl(appData.partyId), '_blank');
         },
       });
       toolbar.appendChild(openAllBtn);
 
       // Status dot
       const dot = document.createElement('div');
-      dot.id        = 'sfn-status-dot';
+      dot.id = 'sfn-status-dot';
       dot.className = `sfn-status-dot${isLoading ? ' sfn-status-dot--loading' : ''}`;
-      dot.title     = isLoading ? 'Loading related records…' : 'Records loaded';
+      dot.title = isLoading ? 'Loading related records…' : 'Records loaded';
       toolbar.appendChild(dot);
 
       // Apply states
