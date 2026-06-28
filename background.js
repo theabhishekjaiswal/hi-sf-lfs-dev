@@ -57,7 +57,7 @@ async function handleGetObjects(msg, sender) {
 
   const customObjectIds = new Map();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 1800); // 1.8s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 2000); // 2.0s timeout
 
   // 1. Tooling API query for CustomObject 01I Setup IDs (Parallel)
   const toolingPromise = (async () => {
@@ -95,12 +95,109 @@ async function handleGetObjects(msg, sender) {
     return resp.json();
   })();
 
-  try {
-    const [_, data] = await Promise.all([toolingPromise, sobjectsPromise]);
+  // 3. Fetch Apex Classes (Parallel)
+  const classesPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+LIMIT+2000`;
+      const resp = await fetch(qUrl, { headers });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Class', setupId: r.Id }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] ApexClass fetch failed:', e.message);
+    }
+    return [];
+  })();
 
+  // 4. Fetch Apex Triggers (Parallel)
+  const triggersPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+LIMIT+2000`;
+      const resp = await fetch(qUrl, { headers });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Trigger', setupId: r.Id }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] ApexTrigger fetch failed:', e.message);
+    }
+    return [];
+  })();
+
+  // 5. Fetch Visualforce Pages (Parallel)
+  const pagesPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+LIMIT+2000`;
+      const resp = await fetch(qUrl, { headers });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Page', setupId: r.Id }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] ApexPage fetch failed:', e.message);
+    }
+    return [];
+  })();
+
+  // 6. Fetch Custom Labels via Tooling API (Parallel)
+  const labelsPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,Name,MasterLabel+FROM+ExternalString+LIMIT+1500`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.MasterLabel || r.Name,
+          name: r.Name,
+          type: 'Label',
+          setupId: r.Id
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Custom Label fetch failed:', e.message);
+    }
+    return [];
+  })();
+
+  // 7. Fetch Custom Settings (Parallel)
+  const settingsPromise = (async () => {
+    try {
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+DurableId,QualifiedApiName,Label+FROM+EntityDefinition+WHERE+IsCustomSetting=true`;
+      const resp = await fetch(qUrl, { headers });
+      if (resp.ok) {
+        const d = await resp.json();
+        return (d.records || []).map(r => ({
+          label: r.Label || r.QualifiedApiName,
+          name: r.QualifiedApiName,
+          type: 'Setting',
+          setupId: r.DurableId
+        }));
+      }
+    } catch (e) {
+      console.warn('[SF Pilot] Custom Settings fetch failed:', e.message);
+    }
+    return [];
+  })();
+
+  try {
+    const [_, data, classes, triggers, pages, labels, settings] = await Promise.all([
+      toolingPromise,
+      sobjectsPromise,
+      classesPromise,
+      triggersPromise,
+      pagesPromise,
+      labelsPromise,
+      settingsPromise
+    ]);
+
+    const unifiedList = [];
+    const customSettingsNames = new Set(settings.map(s => s.name.toLowerCase()));
+
+    // Add sObjects (filter out Custom Settings to avoid double listing)
     if (data && Array.isArray(data.sobjects)) {
-      const list = data.sobjects
-        .filter(o => o.queryable && o.layoutable)
+      const sobjects = data.sobjects
+        .filter(o => o.queryable && o.layoutable && !customSettingsNames.has(o.name.toLowerCase()))
         .map(o => {
           let setupId = null;
           if (o.custom) {
@@ -111,15 +208,22 @@ async function handleGetObjects(msg, sender) {
           return {
             label: o.label || '',
             name: o.name || '',
+            type: 'Object',
             custom: o.custom,
             setupId: setupId
           };
         });
-      
-      list.sort((a, b) => a.label.localeCompare(b.label));
-      objectsCache.set(hostname, list);
-      return list;
+      unifiedList.push(...sobjects);
     }
+
+    // Add Classes, Triggers, Pages, Labels, Settings
+    unifiedList.push(...classes, ...triggers, ...pages, ...labels, ...settings);
+
+    // Sort alphabetically by label name
+    unifiedList.sort((a, b) => a.label.localeCompare(b.label));
+
+    objectsCache.set(hostname, unifiedList);
+    return unifiedList;
   } catch (e) {
     throw e;
   } finally {

@@ -508,7 +508,7 @@
           <div class="sfp-search-icon-inside">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
-          <input type="text" class="sfp-search-input" placeholder="Search Object or API name..." autocomplete="off">
+          <input type="text" class="sfp-search-input" placeholder="Search anything..." autocomplete="off">
         </div>
         <div class="sfp-results-list"></div>
         <div class="sfp-search-footer">
@@ -582,8 +582,8 @@
       return;
     }
 
-    filteredObjects = objectsList.filter(o => 
-      o.label.toLowerCase().includes(query) || 
+    filteredObjects = objectsList.filter(o =>
+      o.label.toLowerCase().includes(query) ||
       o.name.toLowerCase().includes(query)
     );
 
@@ -652,18 +652,24 @@
     if (!listDiv) return;
 
     if (filteredObjects.length === 0) {
-      listDiv.innerHTML = `<div class="sfp-info-text">No matching objects.</div>`;
+      listDiv.innerHTML = `<div class="sfp-info-text">No matching records.</div>`;
       return;
     }
 
     listDiv.innerHTML = filteredObjects
       .slice(0, 60)
-      .map((o, idx) => `
-        <div class="sfp-result-item" data-index="${idx}" data-name="${o.name}">
-          <span class="sfp-item-label">${escapeHtml(o.label)}</span>
-          <span class="sfp-item-name">${escapeHtml(o.name)}</span>
-        </div>
-      `).join('');
+      .map((o, idx) => {
+        const tagClass = `sfp-tag--${o.type.toLowerCase()}`;
+        return `
+          <div class="sfp-result-item" data-index="${idx}" data-name="${o.name}">
+            <div class="sfp-item-left">
+              <span class="sfp-item-label">${escapeHtml(o.label)}</span>
+              <span class="sfp-item-name">${escapeHtml(o.name)}</span>
+            </div>
+            <span class="sfp-tag ${tagClass}">${escapeHtml(o.type)}</span>
+          </div>
+        `;
+      }).join('');
 
     listDiv.querySelectorAll('.sfp-result-item').forEach(item => {
       item.addEventListener('click', () => {
@@ -675,20 +681,36 @@
   function openObjectInClassic(objectName) {
     closeSearchModal();
     const obj = objectsList.find(o => o.name === objectName);
-    
+
     let destination;
     if (obj) {
-      if (obj.custom) {
-        // Custom Object Setup definition page (using 15-character ID)
+      if (obj.type === 'Object') {
+        if (obj.custom) {
+          // Custom Object Setup definition page (using 15-character ID)
+          if (obj.setupId) {
+            const setupId15 = obj.setupId.substring(0, 15);
+            destination = `${setupId15}?setupid=CustomObjects`;
+          } else {
+            destination = `p/setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
+          }
+        } else {
+          // Standard Object fields setup page
+          destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
+        }
+      } else if (obj.type === 'Setting') {
+        // Custom Setting setup (durable ID points to standard Custom Object editor)
         if (obj.setupId) {
           const setupId15 = obj.setupId.substring(0, 15);
           destination = `${setupId15}?setupid=CustomObjects`;
         } else {
-          destination = `p/setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
+          destination = 'setup/ui/customsettings.jsp';
         }
+      } else if (obj.type === 'Label') {
+        // Custom Label detail Setup ID
+        destination = obj.setupId;
       } else {
-        // Standard Object fields setup page
-        destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
+        // Apex Class, Apex Trigger, Visualforce Page setup detail page
+        destination = obj.setupId;
       }
     } else {
       destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
