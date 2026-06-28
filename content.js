@@ -460,14 +460,231 @@
     return root;
   }
 
+  // ─── Rebranding & Side Search Panel (v5.0 Upgrade) ─────────────────────────
+
+  const SIDE_BTN_ID = 'sfp-side-btn';
+  const MODAL_ID = 'sfp-search-modal';
+
+  let objectsList = [];
+  let filteredObjects = [];
+  let activeIndex = -1;
+
+  function initSidePanel() {
+    if (document.getElementById(SIDE_BTN_ID)) return;
+    if (!document.documentElement) return;
+
+    // 1. Create Side Faded Button
+    const sideBtn = document.createElement('div');
+    sideBtn.id = SIDE_BTN_ID;
+    sideBtn.title = 'SF Pilot Search (Ctrl+Space or click)';
+    sideBtn.innerHTML = `<span class="sfp-side-icon">${ICONS.logo}</span>`;
+    sideBtn.addEventListener('click', openSearchModal);
+    document.documentElement.appendChild(sideBtn);
+
+    // 2. Create Modal Structure
+    const modal = document.createElement('div');
+    modal.id = MODAL_ID;
+    modal.innerHTML = `
+      <div class="sfp-search-panel">
+        <div class="sfp-search-input-wrapper">
+          <div class="sfp-search-icon-inside">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <input type="text" class="sfp-search-input" placeholder="Search Object or API name..." autocomplete="off">
+        </div>
+        <div class="sfp-results-list"></div>
+      </div>
+    `;
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeSearchModal();
+    });
+
+    const input = modal.querySelector('.sfp-search-input');
+    input.addEventListener('input', handleSearchInput);
+    input.addEventListener('keydown', handleSearchKeydown);
+
+    document.documentElement.appendChild(modal);
+  }
+
+  async function openSearchModal() {
+    const modal = document.getElementById(MODAL_ID);
+    if (!modal) return;
+    modal.classList.add('sfp-modal--open');
+
+    const input = modal.querySelector('.sfp-search-input');
+    input.value = '';
+    input.focus();
+
+    activeIndex = -1;
+    filteredObjects = [];
+
+    // Lazy load objects list if not cached locally
+    if (objectsList.length === 0) {
+      renderLoading();
+      try {
+        const list = await getObjectsList();
+        objectsList = list;
+        filteredObjects = list.slice(0, 50);
+        renderResults();
+      } catch (e) {
+        renderError('Failed to load sObjects list.');
+      }
+    } else {
+      filteredObjects = objectsList.slice(0, 50);
+      renderResults();
+    }
+  }
+
+  function closeSearchModal() {
+    const modal = document.getElementById(MODAL_ID);
+    if (modal) modal.classList.remove('sfp-modal--open');
+  }
+
+  function getObjectsList() {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: 'sfGetObjects', baseUrl: getApiBaseUrl() }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (resp && resp.ok) return resolve(resp.data || []);
+        reject(new Error((resp && resp.error) || 'Unknown error'));
+      });
+    });
+  }
+
+  function handleSearchInput(e) {
+    const query = e.target.value.toLowerCase().trim();
+    activeIndex = -1;
+
+    if (!query) {
+      filteredObjects = objectsList.slice(0, 50);
+      renderResults();
+      return;
+    }
+
+    filteredObjects = objectsList.filter(o => 
+      o.label.toLowerCase().includes(query) || 
+      o.name.toLowerCase().includes(query)
+    );
+
+    renderResults();
+  }
+
+  function handleSearchKeydown(e) {
+    const modal = document.getElementById(MODAL_ID);
+    if (!modal) return;
+    const listDiv = modal.querySelector('.sfp-results-list');
+    const items = listDiv.querySelectorAll('.sfp-result-item');
+
+    if (e.key === 'Escape') {
+      closeSearchModal();
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (items.length === 0) return;
+      if (activeIndex < items.length - 1) {
+        if (activeIndex >= 0) items[activeIndex].classList.remove('sfp-item--active');
+        activeIndex++;
+        items[activeIndex].classList.add('sfp-item--active');
+        items[activeIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (items.length === 0) return;
+      if (activeIndex > 0) {
+        items[activeIndex].classList.remove('sfp-item--active');
+        activeIndex--;
+        items[activeIndex].classList.add('sfp-item--active');
+        items[activeIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < items.length) {
+        openObjectInClassic(items[activeIndex].getAttribute('data-name'));
+      } else if (items.length > 0) {
+        openObjectInClassic(items[0].getAttribute('data-name'));
+      }
+    }
+  }
+
+  function renderLoading() {
+    const listDiv = document.querySelector(`#${MODAL_ID} .sfp-results-list`);
+    if (!listDiv) return;
+    listDiv.innerHTML = `
+      <div class="sfp-info-text">
+        <span class="sfp-spinner-mini">${ICONS.spinner}</span>
+        <span>Loading sObjects from metadata...</span>
+      </div>
+    `;
+  }
+
+  function renderError(msg) {
+    const listDiv = document.querySelector(`#${MODAL_ID} .sfp-results-list`);
+    if (!listDiv) return;
+    listDiv.innerHTML = `<div class="sfp-info-text" style="color: #ef4444;">${msg}</div>`;
+  }
+
+  function renderResults() {
+    const listDiv = document.querySelector(`#${MODAL_ID} .sfp-results-list`);
+    if (!listDiv) return;
+
+    if (filteredObjects.length === 0) {
+      listDiv.innerHTML = `<div class="sfp-info-text">No matching objects.</div>`;
+      return;
+    }
+
+    listDiv.innerHTML = filteredObjects
+      .slice(0, 60)
+      .map((o, idx) => `
+        <div class="sfp-result-item" data-index="${idx}" data-name="${o.name}">
+          <span class="sfp-item-label">${escapeHtml(o.label)}</span>
+          <span class="sfp-item-name">${escapeHtml(o.name)}</span>
+        </div>
+      `).join('');
+
+    listDiv.querySelectorAll('.sfp-result-item').forEach(item => {
+      item.addEventListener('click', () => {
+        openObjectInClassic(item.getAttribute('data-name'));
+      });
+    });
+  }
+
+  function openObjectInClassic(objectName) {
+    closeSearchModal();
+    const url = `${getClassicBase()}/${objectName}`;
+    window.open(url, '_blank');
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // Global Keyboard Shortcut (Ctrl+Space to toggle Search Panel)
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.code === 'Space') {
+      e.preventDefault();
+      const m = document.getElementById(MODAL_ID);
+      if (m && m.classList.contains('sfp-modal--open')) {
+        closeSearchModal();
+      } else {
+        openSearchModal();
+      }
+    }
+  });
+
   // ─── Init ─────────────────────────────────────────────────────────────────
 
   const _resolvedTypes = new Map();
 
   async function init() {
+    // 1. Render always-visible Side Panel
+    initSidePanel();
+
+    // 2. Parse record page details
     const page = parsePage();
     if (!page) {
-      // Remove existing toolbar on non-record pages
       const el = document.getElementById(TOOLBAR_ID);
       if (el) el.remove();
       return;
@@ -476,10 +693,10 @@
     if (document.getElementById(TOOLBAR_ID)) return;
     if (!document.documentElement) return;
 
-    // ── Step 1: Render basic toolbar INSTANTLY
+    // Render basic record toolbar
     document.documentElement.appendChild(buildToolbar(page, null, false));
 
-    // ── Step 2: Resolve object type if unknown (Classic record, unknown prefix)
+    // Resolve object type if unknown
     if (page.recordId && !page.objectType) {
       const prefix = page.recordId.substring(0, 3);
       if (_resolvedTypes.has(prefix)) {
@@ -493,17 +710,17 @@
       }
     }
 
-    // ── Step 3: If it's an Application, upgrade toolbar with app buttons
+    // Upgrade Application records
     if (page.objectType === APP_OBJECT) {
       const existing = document.getElementById(TOOLBAR_ID);
-      if (!existing || location.href !== lastUrl) return; // navigated away
+      if (!existing || location.href !== lastUrl) return;
       existing.remove();
-      document.documentElement.appendChild(buildToolbar(page, null, true)); // loading spinners
+      document.documentElement.appendChild(buildToolbar(page, null, true));
 
       const appData = await fetchAppData(page.recordId);
 
       const prev = document.getElementById(TOOLBAR_ID);
-      if (!prev || location.href !== lastUrl) return; // navigated away
+      if (!prev || location.href !== lastUrl) return;
       prev.remove();
       document.documentElement.appendChild(buildToolbar(page, appData, false));
     }
@@ -526,7 +743,7 @@
     _navTimer = setTimeout(() => {
       _navTimer = null;
       init();
-    }, 450); // Balanced 450ms wait for record pages
+    }, 450);
   }
 
   ['pushState', 'replaceState'].forEach((method) => {
@@ -539,9 +756,7 @@
 
   window.addEventListener('popstate', onUrlChange);
 
-  // ─── MutationObserver: survive record page layout updates ──────────────────
-  // Checks only direct children of html (highly performant, subtree: false).
-  // This captures body updates without any performance overhead or freezing.
+  // ─── MutationObserver: survive layout updates ──────────────────────────────
 
   let _reinjectTimer = null;
 
@@ -549,20 +764,24 @@
     if (_reinjectTimer) return;
     _reinjectTimer = setTimeout(() => {
       _reinjectTimer = null;
-      if (!document.getElementById(TOOLBAR_ID) && location.href === lastUrl) {
+      if (location.href === lastUrl) {
         init();
       }
     }, 300);
   }
 
   const domObserver = new MutationObserver(() => {
-    const page = parsePage();
-    if (!page) {
-      const el = document.getElementById(TOOLBAR_ID);
-      if (el) el.remove();
+    if (document.getElementById(SIDE_BTN_ID) && document.getElementById(MODAL_ID)) {
+      const page = parsePage();
+      if (!page && document.getElementById(TOOLBAR_ID)) {
+        document.getElementById(TOOLBAR_ID).remove();
+        return;
+      }
+      if (page && !document.getElementById(TOOLBAR_ID)) {
+        scheduleReinject();
+      }
       return;
     }
-    if (document.getElementById(TOOLBAR_ID)) return;
     scheduleReinject();
   });
 

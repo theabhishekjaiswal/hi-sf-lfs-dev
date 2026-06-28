@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SF Pilot",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "Premium Salesforce navigation toolbar — switch views, open related records instantly with SF Pilot.",
   "permissions": [
     "scripting",

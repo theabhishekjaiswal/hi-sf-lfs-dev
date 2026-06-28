@@ -17,6 +17,8 @@
 
 // Per-hostname API version cache (keyed by Classic hostname)
 const apiVersionCache = new Map();
+// Cache of sObject lists per hostname
+const objectsCache = new Map();
 
 // ─── Message handler ──────────────────────────────────────────────────────────
 
@@ -27,7 +29,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // keep channel open for async response
   }
+  if (msg.type === 'sfGetObjects') {
+    handleGetObjects(msg, sender)
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
 });
+
+// ─── sObjects list handler ───────────────────────────────────────────────────
+
+async function handleGetObjects(msg, sender) {
+  const tabUrl = sender.tab && sender.tab.url ? new URL(sender.tab.url) : null;
+  const rawBase = tabUrl ? `${tabUrl.protocol}//${tabUrl.hostname}` : (msg.baseUrl || '');
+  const apiBase = toClassicBase(rawBase);
+  const hostname = new URL(apiBase).hostname;
+
+  if (objectsCache.has(hostname)) {
+    return objectsCache.get(hostname);
+  }
+
+  const sid = await getSid(apiBase);
+  const headers = { Accept: 'application/json' };
+  if (sid) headers['Authorization'] = `Bearer ${sid}`;
+
+  const ver = await getApiVersion(apiBase, headers);
+  const url = `${apiBase}/services/data/${ver}/sobjects`;
+
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch objects: HTTP ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  if (data && Array.isArray(data.sobjects)) {
+    // Filter to layoutable objects to get standard/custom data objects
+    const list = data.sobjects
+      .filter(o => o.queryable && o.layoutable)
+      .map(o => ({ label: o.label || '', name: o.name || '' }));
+    
+    list.sort((a, b) => a.label.localeCompare(b.label));
+    objectsCache.set(hostname, list);
+    return list;
+  }
+  return [];
+}
 
 // ─── Domain normalization ─────────────────────────────────────────────────────
 
