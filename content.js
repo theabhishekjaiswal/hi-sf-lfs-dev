@@ -708,11 +708,19 @@
         } else {
           destination = 'setup/ui/customsettings.jsp';
         }
+      } else if (obj.type === 'Class') {
+        // Direct Apex Class Setup page in Classic (safely bypasses Lightning redirections)
+        destination = `setup/build/apxClass.apexp?id=${obj.setupId}`;
+      } else if (obj.type === 'Trigger') {
+        // Direct Apex Trigger Setup page in Classic
+        destination = `setup/build/apxTrigger.apexp?id=${obj.setupId}`;
+      } else if (obj.type === 'Page') {
+        // Direct Visualforce Page Setup page in Classic
+        destination = `setup/build/apxPage.apexp?id=${obj.setupId}`;
       } else if (obj.type === 'Label') {
         // Custom Label detail Setup ID
         destination = obj.setupId;
       } else {
-        // Apex Class, Apex Trigger, Visualforce Page setup detail page
         destination = obj.setupId;
       }
     } else {
