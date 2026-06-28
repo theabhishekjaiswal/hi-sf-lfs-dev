@@ -707,7 +707,7 @@
           }
         } else {
           // Standard Object fields setup page
-          destination = `setup/layout/LayoutFieldList?type=${objectName}`;
+          destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
         }
       } else if (obj.type === 'Setting') {
         // Custom Setting setup (durable ID points to standard Custom Object editor)
@@ -728,7 +728,7 @@
       } else if (nameLower.endsWith('__c')) {
         destination = `01I?setupid=CustomObjects`;
       } else {
-        destination = `setup/layout/LayoutFieldList?type=${objectName}`;
+        destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
       }
     }
 

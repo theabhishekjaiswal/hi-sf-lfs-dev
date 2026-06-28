@@ -45,18 +45,18 @@ An always-visible search button `(#sfp-side-btn)` floats on the middle-right edg
   * **`Option + Space`** (macOS - prevents Spotlight shortcut conflict)
 
 ### Scope of Autocomplete Search
-Queries and maps multiple Salesforce metadata directories in parallel via the background script (filtering for local custom code/unmanaged records to optimize performance in large orgs):
+Queries and maps multiple Salesforce metadata directories in parallel via the background script:
 
-1. **Objects:** Standard and Custom sObjects (Custom Object metadata pre-fetch queries all custom objects).
-2. **Apex Classes:** Local custom Apex Code files (`ApexClass` filtered with `NamespacePrefix = null`).
-3. **Apex Triggers:** Local event triggers (`ApexTrigger` filtered with `NamespacePrefix = null`).
-4. **Visualforce Pages:** Local VF templates (`ApexPage` filtered with `NamespacePrefix = null`).
-5. **Custom Labels:** Local custom labels (`ExternalString` queried via Tooling API with `NamespacePrefix = null`).
+1. **Objects:** Standard and Custom sObjects (including managed custom objects and Custom Metadata Types `__mdt` which are indexed regardless of their layoutable status).
+2. **Apex Classes:** Local custom Apex Code files (`ApexClass` filtered with `NamespacePrefix = null` for performance).
+3. **Apex Triggers:** Local event triggers (`ApexTrigger` filtered with `NamespacePrefix = null` for performance).
+4. **Visualforce Pages:** Local VF templates (`ApexPage` filtered with `NamespacePrefix = null` for performance).
+5. **Custom Labels:** Local custom labels (`ExternalString` queried via Tooling API with `NamespacePrefix = null` for performance).
 6. **Custom Settings:** Local custom setting objects (queried via `EntityDefinition` with `IsCustomSetting = true`). Deduplicated from the default sObjects list automatically.
 
 ### High-Contrast Color Tags
 Every autocomplete result has a labeled pill tag identifying its metadata type:
-* **`OBJECT`** (Green) — Standard/Custom sObjects.
+* **`OBJECT`** (Green) — Standard, custom, managed custom sObjects, and Custom Metadata Types.
 * **`CLASS`** (Purple) — Apex Classes.
 * **`TRIGGER`** (Orange) — Apex Triggers.
 * **`PAGE`** (Blue) — Visualforce Pages.
@@ -65,8 +65,9 @@ Every autocomplete result has a labeled pill tag identifying its metadata type:
 
 ### Setup Redirection Logic (Salesforce Classic)
 Selecting a metadata element routes you directly to its admin Setup screen in Classic:
-* **Standard Objects / Settings:** Opens the Fields List Setup page (using `setup/layout/LayoutFieldList` to enable correct Lightning redirection).
-* **Custom Objects:** Opens the Custom Object definition screen. Maps using the **15-character Classic Setup ID** formatted as `/{15_char_id}?setupid=CustomObjects` to prevent access or URL errors.
+* **Standard Objects:** Opens the Fields List Setup page using `/p/setup/layout/LayoutFieldList?type={objectName}` to ensure correct routing.
+* **Custom / Managed Objects:** Opens the Custom Object definition screen. Maps using the **15-character Classic Setup ID** formatted as `/{15_char_id}?setupid=CustomObjects` (falls back to `/01I?setupid=CustomObjects` if not resolved).
+* **Custom Metadata Types:** Opens the CMDT definition screen. Maps using the **15-character Classic Setup ID** formatted as `/{15_char_id}?setupid=CustomMetadata` (falls back to `/01I?setupid=CustomMetadata` if not resolved).
 * **Apex / Visualforce / Custom Labels:** Opens the code editor or detail Setup panel using their unique Salesforce ID directly.
 
 ---
@@ -77,7 +78,7 @@ Selecting a metadata element routes you directly to its admin Setup screen in Cl
 * **Parallel API Requests:** Background metadata compilation queries are run concurrently, reducing load latency.
 * **CORS-Free background Service Worker:** Requests bypass browser preflights using background host permissions.
 * **Query Timeout Guard & Abort Signals:** A **2.2-second AbortController timeout** is attached to all concurrent fetches. If any query is slow, hangs, or fails in the organization, it aborts cleanly, and the search suggestions still load instantly with the remaining categories.
-* **Enterprise Metadata Filter:** Filters query results to `unmanaged` metadata and `NamespacePrefix = null` parameters, excluding thousands of packaged managed items that developers do not locally edit. This speeds up query times by 10x in large orgs.
+* **Enterprise Metadata Filter:** Filters query results for Apex code, Custom Labels, and Custom Settings to `unmanaged` metadata and `NamespacePrefix = null` parameters, excluding thousands of packaged managed items that developers do not locally edit (optimizing query speeds by 10x). However, Custom Objects and Custom Metadata Types are NOT filtered by namespace, enabling direct redirection for all standard, custom, managed, and metadata objects in the organization.
 * **Rendering Optimization:** Search results are sliced to the top 60 matches (`.slice(0, 60)`). This limits DOM rendering load and prevents typing lag.
 
 ---
