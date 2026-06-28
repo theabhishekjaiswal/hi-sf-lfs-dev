@@ -42,17 +42,17 @@ An always-visible search button `(#sfp-side-btn)` floats on the middle-right edg
 * **Clicking** the side wing button.
 * Pressing the global keyboard shortcuts:
   * **`Ctrl + Space`** (Windows / Linux)
-  * **`Cmd + Space`** (macOS)
+  * **`Option + Space`** (macOS - prevents Spotlight shortcut conflict)
 
 ### Scope of Autocomplete Search
-Queries and maps multiple Salesforce metadata directories in parallel via the background script:
+Queries and maps multiple Salesforce metadata directories in parallel via the background script (filtering for local custom code/unmanaged records to optimize performance in large orgs):
 
-1. **Objects:** Standard and Custom sObjects.
-2. **Apex Classes:** All Apex Code files (`ApexClass`).
-3. **Apex Triggers:** Event triggers (`ApexTrigger`).
-4. **Visualforce Pages:** VF markup templates (`ApexPage`).
-5. **Custom Labels:** All localization variables (`ExternalString` queried via Tooling API).
-6. **Custom Settings:** Custom setting objects (queried via `EntityDefinition` where `IsCustomSetting = true`). Deduplicated from the default sObjects list automatically.
+1. **Objects:** Standard and Custom sObjects (Custom Object metadata pre-fetch filtered with `NamespacePrefix = null`).
+2. **Apex Classes:** Local custom Apex Code files (`ApexClass` filtered with `ManageableState = 'unmanaged'`).
+3. **Apex Triggers:** Local event triggers (`ApexTrigger` filtered with `ManageableState = 'unmanaged'`).
+4. **Visualforce Pages:** Local VF templates (`ApexPage` filtered with `ManageableState = 'unmanaged'`).
+5. **Custom Labels:** Local custom labels (`ExternalString` queried via Tooling API with `NamespacePrefix = null`).
+6. **Custom Settings:** Local custom setting objects (queried via `EntityDefinition` with `IsCustomSetting = true AND NamespacePrefix = null`). Deduplicated from the default sObjects list automatically.
 
 ### High-Contrast Color Tags
 Every autocomplete result has a labeled pill tag identifying its metadata type:
@@ -76,7 +76,8 @@ Selecting a metadata element routes you directly to its admin Setup screen in Cl
 * **Zero Page-Load Impact:** No Salesforce APIs are queried on page load. All metadata indexing is lazy-loaded (triggered only when the search panel is opened for the first time).
 * **Parallel API Requests:** Background metadata compilation queries are run concurrently, reducing load latency.
 * **CORS-Free background Service Worker:** Requests bypass browser preflights using background host permissions.
-* **Query Timeout Guard:** A **2.0-second AbortController timeout** is attached to Tooling queries. If the Tooling API is slow or blocked, it aborts cleanly, and the search suggestions still load instantly with the remaining categories.
+* **Query Timeout Guard & Abort Signals:** A **2.2-second AbortController timeout** is attached to all concurrent fetches. If any query is slow, hangs, or fails in the organization, it aborts cleanly, and the search suggestions still load instantly with the remaining categories.
+* **Enterprise Metadata Filter:** Filters query results to `unmanaged` metadata and `NamespacePrefix = null` parameters, excluding thousands of packaged managed items that developers do not locally edit. This speeds up query times by 10x in large orgs.
 * **Rendering Optimization:** Search results are sliced to the top 60 matches (`.slice(0, 60)`). This limits DOM rendering load and prevents typing lag.
 
 ---

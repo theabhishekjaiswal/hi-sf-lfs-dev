@@ -57,12 +57,12 @@ async function handleGetObjects(msg, sender) {
 
   const customObjectIds = new Map();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000); // 2.0s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 2200); // 2.2s total timeout
 
   // 1. Tooling API query for CustomObject 01I Setup IDs (Parallel)
   const toolingPromise = (async () => {
     try {
-      const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject`;
+      const customQueryUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,DeveloperName,NamespacePrefix+FROM+CustomObject+WHERE+NamespacePrefix=null`;
       const qResp = await fetch(customQueryUrl, { headers, signal: controller.signal });
       if (qResp.ok) {
         const qData = await qResp.json();
@@ -80,15 +80,13 @@ async function handleGetObjects(msg, sender) {
       }
     } catch (e) {
       console.warn('[SF Pilot] CustomObject pre-fetch skipped or timed out:', e.message);
-    } finally {
-      clearTimeout(timeoutId);
     }
   })();
 
   // 2. Fetch sObjects list (Parallel)
   const sobjectsPromise = (async () => {
     const url = `${apiBase}/services/data/${ver}/sobjects`;
-    const resp = await fetch(url, { headers });
+    const resp = await fetch(url, { headers, signal: controller.signal });
     if (!resp.ok) {
       throw new Error(`Failed to fetch objects: HTTP ${resp.status}`);
     }
@@ -98,8 +96,8 @@ async function handleGetObjects(msg, sender) {
   // 3. Fetch Apex Classes (Parallel)
   const classesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass`;
-      const resp = await fetch(qUrl, { headers });
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+WHERE+ManageableState='unmanaged'`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Class', setupId: r.Id }));
@@ -113,8 +111,8 @@ async function handleGetObjects(msg, sender) {
   // 4. Fetch Apex Triggers (Parallel)
   const triggersPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger`;
-      const resp = await fetch(qUrl, { headers });
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+WHERE+ManageableState='unmanaged'`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Trigger', setupId: r.Id }));
@@ -128,8 +126,8 @@ async function handleGetObjects(msg, sender) {
   // 5. Fetch Visualforce Pages (Parallel)
   const pagesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage`;
-      const resp = await fetch(qUrl, { headers });
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+WHERE+ManageableState='unmanaged'`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({ label: r.Name, name: r.Name, type: 'Page', setupId: r.Id }));
@@ -143,7 +141,7 @@ async function handleGetObjects(msg, sender) {
   // 6. Fetch Custom Labels via Tooling API (Parallel)
   const labelsPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,Name,MasterLabel+FROM+ExternalString`;
+      const qUrl = `${apiBase}/services/data/${ver}/tooling/query?q=SELECT+Id,Name,MasterLabel+FROM+ExternalString+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
@@ -163,8 +161,8 @@ async function handleGetObjects(msg, sender) {
   // 7. Fetch Custom Settings (Parallel)
   const settingsPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+DurableId,QualifiedApiName,Label+FROM+EntityDefinition+WHERE+IsCustomSetting=true`;
-      const resp = await fetch(qUrl, { headers });
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+DurableId,QualifiedApiName,Label+FROM+EntityDefinition+WHERE+IsCustomSetting=true+AND+NamespacePrefix=null`;
+      const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
         return (d.records || []).map(r => ({
