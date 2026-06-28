@@ -47,12 +47,12 @@ An always-visible search button `(#sfp-side-btn)` floats on the middle-right edg
 ### Scope of Autocomplete Search
 Queries and maps multiple Salesforce metadata directories in parallel via the background script (filtering for local custom code/unmanaged records to optimize performance in large orgs):
 
-1. **Objects:** Standard and Custom sObjects (Custom Object metadata pre-fetch filtered with `NamespacePrefix = null`).
+1. **Objects:** Standard and Custom sObjects (Custom Object metadata pre-fetch queries all custom objects).
 2. **Apex Classes:** Local custom Apex Code files (`ApexClass` filtered with `NamespacePrefix = null`).
 3. **Apex Triggers:** Local event triggers (`ApexTrigger` filtered with `NamespacePrefix = null`).
 4. **Visualforce Pages:** Local VF templates (`ApexPage` filtered with `NamespacePrefix = null`).
 5. **Custom Labels:** Local custom labels (`ExternalString` queried via Tooling API with `NamespacePrefix = null`).
-6. **Custom Settings:** Local custom setting objects (queried via `EntityDefinition` with `IsCustomSetting = true AND NamespacePrefix = null`). Deduplicated from the default sObjects list automatically.
+6. **Custom Settings:** Local custom setting objects (queried via `EntityDefinition` with `IsCustomSetting = true`). Deduplicated from the default sObjects list automatically.
 
 ### High-Contrast Color Tags
 Every autocomplete result has a labeled pill tag identifying its metadata type:
@@ -65,7 +65,7 @@ Every autocomplete result has a labeled pill tag identifying its metadata type:
 
 ### Setup Redirection Logic (Salesforce Classic)
 Selecting a metadata element routes you directly to its admin Setup screen in Classic:
-* **Standard Objects / Settings:** Opens the Fields List Setup page.
+* **Standard Objects / Settings:** Opens the Fields List Setup page (using `setup/layout/LayoutFieldList` to enable correct Lightning redirection).
 * **Custom Objects:** Opens the Custom Object definition screen. Maps using the **15-character Classic Setup ID** formatted as `/{15_char_id}?setupid=CustomObjects` to prevent access or URL errors.
 * **Apex / Visualforce / Custom Labels:** Opens the code editor or detail Setup panel using their unique Salesforce ID directly.
 

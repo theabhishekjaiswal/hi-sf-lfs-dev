@@ -71,7 +71,7 @@ async function handleGetObjects(msg, sender) {
             const ns = r.NamespacePrefix ? `${r.NamespacePrefix}__` : '';
             const devName = r.DeveloperName || '';
             const baseApiName = ns + devName;
-            
+
             // Map both standard custom objects (__c) and custom metadata (__mdt) in lowercase
             customObjectIds.set((baseApiName + '__c').toLowerCase(), r.Id);
             customObjectIds.set((baseApiName + '__mdt').toLowerCase(), r.Id);
@@ -296,7 +296,7 @@ async function getSid(baseUrl) {
   try {
     const cookie = await chrome.cookies.get({ url: baseUrl, name: 'sid' });
     if (cookie && cookie.value) return cookie.value;
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -321,7 +321,7 @@ async function getApiVersion(apiBase, headers) {
         return ver;
       }
     }
-  } catch {}
+  } catch { }
 
   return 'v59.0';
 }
