@@ -1,5 +1,5 @@
 /**
- * SF Navigator v2.6 — Content Script
+ * SF Navigator v2.7 — Content Script
  *
  * Fixes in this version:
  *   1. API in Lightning — background now uses my.salesforce.com for all API calls
@@ -167,6 +167,8 @@
 
     // 3. Apex / Visualforce:  /apex/{PageName}?id={RecordId}
     const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
+    // 3. Apex / Visualforce:  /apex/{PageName}?id={RecordId}
+    const apexMatch = pathname.match(/\/apex\/([^/?#]+)/i);
     const idParam = searchParams.get('id');
     if (apexMatch && idParam && SF_ID_RE.test(idParam)) {
       const objectType = VF_PAGE_MAP[apexMatch[1].toLowerCase()] || null;
@@ -190,21 +192,52 @@
       };
     }
 
-    // 5. Non-record page
-    return { objectType: null, recordId: null, isLightning: onLEX, isRecordPage: false, isSetupPage: isSetup };
+    // 5. Non-record page (extract object API name from Setup params if possible)
+    let objectApiName = null;
+    const entityParam = searchParams.get('entity') || searchParams.get('type') || searchParams.get('setupid');
+    if (entityParam && /^[a-zA-Z0-9_]+$/.test(entityParam)) {
+      if (/^[A-Z]/.test(entityParam) || entityParam.endsWith('__c') || entityParam.endsWith('__mdt')) {
+        objectApiName = entityParam;
+      }
+    }
+
+    return {
+      objectType: null,
+      recordId: null,
+      isLightning: onLEX,
+      isRecordPage: false,
+      isSetupPage: isSetup,
+      objectApiName: objectApiName
+    };
   }
 
   // ─── Object type resolver ─────────────────────────────────────────────────
 
   async function resolveObjectType(recordId) {
     try {
-      // background.js will use the Classic domain + discovered API version
       const url = `${getApiBaseUrl()}/services/data/v59.0/ui-api/records/${recordId}?fields=Id`;
       const data = await bgFetch(url);
       return (data && data.apiName) || null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Resolve CustomObject API Name from its 01I Setup ID
+   */
+  async function resolveCustomObjectApiName(objectId) {
+    try {
+      const data = await bgQuery(`SELECT DeveloperName, NamespacePrefix FROM CustomObject WHERE Id = '${objectId}'`);
+      if (data.records && data.records.length > 0) {
+        const r = data.records[0];
+        const ns = r.NamespacePrefix ? `${r.NamespacePrefix}__` : '';
+        return `${ns}${r.DeveloperName}__c`;
+      }
+    } catch (e) {
+      console.warn('[SF Navigator] CustomObject lookup failed:', e.message);
+    }
+    return null;
   }
 
   // ─── URL builders ─────────────────────────────────────────────────────────
@@ -228,6 +261,13 @@
    */
   function switchToClassicUrl(page) {
     const classicBase = getClassicBase();
+    const path = window.location.pathname;
+    const pLower = path.toLowerCase();
+
+    // Custom Metadata redirect
+    if (pLower.includes('custommetadata')) {
+      return `${classicBase}/setup/forcecomHomepage.apexp`;
+    }
 
     // Setup pages / metadata IDs
     if (page && page.isSetupPage) {
@@ -239,9 +279,6 @@
     }
 
     if (isOnLightningDomain()) {
-      const path = window.location.pathname;
-      const pLower = path.toLowerCase();
-
       // If we are in Lightning Setup
       if (pLower.includes('/setup') || pLower.includes('setuponehome') || pLower.includes('objectmanager')) {
         return `${classicBase}/setup/forcecomHomepage.apexp`;
@@ -264,18 +301,30 @@
   function switchToLightningUrl(page) {
     const lightningBase = getLightningBase();
     const path = window.location.pathname;
+    const pLower = path.toLowerCase();
 
-    // 1. Classic Object Manager / metadata pages → Lightning Object Manager
+    // 1. Custom Metadata setup pages → Lightning Custom Metadata Setup home
+    if (pLower.includes('custommetadata')) {
+      return `${lightningBase}/lightning/setup/CustomMetadata/home`;
+    }
+
+    // 2. Classic Object Manager / metadata pages → Lightning Object Manager
     if (/\/(CustomObjectFieldsPage|CustomEntityPage|LayoutFieldList|CustomObjectPage|RelatedList|PageLayouts)/i.test(path)) {
+      if (page && page.objectApiName) {
+        return `${lightningBase}/lightning/setup/ObjectManager/${page.objectApiName}/FieldsAndRelationships/view`;
+      }
       return `${lightningBase}/lightning/setup/ObjectManager/home`;
     }
 
-    // 2. Setup pages / metadata IDs from Classic
+    // 3. Setup pages / metadata IDs from Classic
     if (page && page.isSetupPage) {
       if (page.recordId) {
         const prefix = page.recordId.substring(0, 3);
         if (prefix === '01I') {
-          // Custom Object Definition -> Lightning Object Manager
+          // Custom Object definition page in Classic
+          if (page.objectApiName) {
+            return `${lightningBase}/lightning/setup/ObjectManager/${page.objectApiName}/FieldsAndRelationships/view`;
+          }
           return `${lightningBase}/lightning/setup/ObjectManager/home`;
         }
         if (prefix === '01p') {
@@ -297,7 +346,7 @@
       return `${lightningBase}/lightning/setup/SetupOneHome/home`;
     }
 
-    // 3. Record page
+    // 4. Record page
     if (page && page.isRecordPage && page.recordId) {
       if (page.objectType) {
         return `${lightningBase}/lightning/r/${page.objectType}/${page.recordId}/view`;
@@ -590,12 +639,12 @@
 
   async function init() {
     if (document.getElementById(TOOLBAR_ID)) return;
-    if (!document.body) return;
+    if (!document.documentElement) return;
 
     const page = parsePage();
 
     // ── Step 1: Render basic toolbar INSTANTLY (no API waits) ────────────────
-    document.body.appendChild(buildToolbar(page, null, false));
+    document.documentElement.appendChild(buildToolbar(page, null, false));
 
     // ── Step 2: Resolve object type if unknown (Classic record, unknown prefix)
     if (page && page.isRecordPage && page.recordId && !page.objectType) {
@@ -611,13 +660,21 @@
       }
     }
 
-    // ── Step 3: If it's an Application, upgrade toolbar with app buttons ──────
+    // ── Step 3: Resolve CustomObject API Name if recordId starts with 01I
+    if (page && page.recordId && page.recordId.startsWith('01I') && !page.objectApiName) {
+      const apiName = await resolveCustomObjectApiName(page.recordId);
+      if (apiName) {
+        page.objectApiName = apiName;
+      }
+    }
+
+    // ── Step 4: If it's an Application, upgrade toolbar with app buttons ──────
     if (page && page.objectType === APP_OBJECT) {
       // Replace basic toolbar with app-buttons loading state
       const existing = document.getElementById(TOOLBAR_ID);
       if (!existing || location.href !== lastUrl) return; // navigated away
       existing.remove();
-      document.body.appendChild(buildToolbar(page, null, true)); // loading spinners
+      document.documentElement.appendChild(buildToolbar(page, null, true)); // loading spinners
 
       // Fetch app data
       const appData = await fetchAppData(page.recordId);
@@ -626,7 +683,7 @@
       const prev = document.getElementById(TOOLBAR_ID);
       if (!prev || location.href !== lastUrl) return; // navigated away
       prev.remove();
-      document.body.appendChild(buildToolbar(page, appData, false));
+      document.documentElement.appendChild(buildToolbar(page, appData, false));
     }
   }
 
