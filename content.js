@@ -694,11 +694,11 @@
             const setupId15 = obj.setupId.substring(0, 15);
             destination = `${setupId15}?setupid=CustomObjects`;
           } else {
-            destination = `setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
+            destination = `p/setup/layout/LayoutFieldList?type=${objectName}&setupid=CustomObjects`;
           }
         } else {
           // Standard Object fields setup page
-          destination = `setup/layout/LayoutFieldList?type=${objectName}`;
+          destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
         }
       } else if (obj.type === 'Setting') {
         // Custom Setting setup (durable ID points to standard Custom Object editor)
@@ -713,7 +713,7 @@
         destination = obj.setupId;
       }
     } else {
-      destination = `setup/layout/LayoutFieldList?type=${objectName}`;
+      destination = `p/setup/layout/LayoutFieldList?type=${objectName}`;
     }
 
     const url = `${getClassicBase()}/${destination}`;

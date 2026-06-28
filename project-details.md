@@ -65,7 +65,7 @@ Every autocomplete result has a labeled pill tag identifying its metadata type:
 
 ### Setup Redirection Logic (Salesforce Classic)
 Selecting a metadata element routes you directly to its admin Setup screen in Classic:
-* **Standard Objects / Settings:** Opens the Fields List Setup page (using `setup/layout/LayoutFieldList` to enable correct Lightning redirection).
+* **Standard Objects / Settings:** Opens the Fields List Setup page (using `p/setup/layout/LayoutFieldList`).
 * **Custom Objects:** Opens the Custom Object definition screen. Maps using the **15-character Classic Setup ID** formatted as `/{15_char_id}?setupid=CustomObjects` to prevent access or URL errors.
 * **Apex / Visualforce / Custom Labels:** Opens the code editor or detail Setup panel using their unique Salesforce ID directly.
 
