@@ -48,9 +48,9 @@ An always-visible search button `(#sfp-side-btn)` floats on the middle-right edg
 Queries and maps multiple Salesforce metadata directories in parallel via the background script (filtering for local custom code/unmanaged records to optimize performance in large orgs):
 
 1. **Objects:** Standard and Custom sObjects (Custom Object metadata pre-fetch filtered with `NamespacePrefix = null`).
-2. **Apex Classes:** Local custom Apex Code files (`ApexClass` filtered with `ManageableState = 'unmanaged'`).
-3. **Apex Triggers:** Local event triggers (`ApexTrigger` filtered with `ManageableState = 'unmanaged'`).
-4. **Visualforce Pages:** Local VF templates (`ApexPage` filtered with `ManageableState = 'unmanaged'`).
+2. **Apex Classes:** Local custom Apex Code files (`ApexClass` filtered with `NamespacePrefix = null`).
+3. **Apex Triggers:** Local event triggers (`ApexTrigger` filtered with `NamespacePrefix = null`).
+4. **Visualforce Pages:** Local VF templates (`ApexPage` filtered with `NamespacePrefix = null`).
 5. **Custom Labels:** Local custom labels (`ExternalString` queried via Tooling API with `NamespacePrefix = null`).
 6. **Custom Settings:** Local custom setting objects (queried via `EntityDefinition` with `IsCustomSetting = true AND NamespacePrefix = null`). Deduplicated from the default sObjects list automatically.
 

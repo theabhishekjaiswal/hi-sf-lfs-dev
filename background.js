@@ -96,7 +96,7 @@ async function handleGetObjects(msg, sender) {
   // 3. Fetch Apex Classes (Parallel)
   const classesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+WHERE+ManageableState='unmanaged'`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexClass+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
@@ -111,7 +111,7 @@ async function handleGetObjects(msg, sender) {
   // 4. Fetch Apex Triggers (Parallel)
   const triggersPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+WHERE+ManageableState='unmanaged'`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexTrigger+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
@@ -126,7 +126,7 @@ async function handleGetObjects(msg, sender) {
   // 5. Fetch Visualforce Pages (Parallel)
   const pagesPromise = (async () => {
     try {
-      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+WHERE+ManageableState='unmanaged'`;
+      const qUrl = `${apiBase}/services/data/${ver}/query?q=SELECT+Id,Name+FROM+ApexPage+WHERE+NamespacePrefix=null`;
       const resp = await fetch(qUrl, { headers, signal: controller.signal });
       if (resp.ok) {
         const d = await resp.json();
